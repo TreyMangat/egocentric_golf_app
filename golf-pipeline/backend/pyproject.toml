@@ -37,7 +37,7 @@ dependencies = [
     "ffmpeg-python>=0.2",
 
     # pose (cpu fallback for local dev — gpu version runs on modal)
-    "mediapipe>=0.10",
+    "mediapipe==0.10.14",
 
     # utilities
     "python-dotenv>=1.0",

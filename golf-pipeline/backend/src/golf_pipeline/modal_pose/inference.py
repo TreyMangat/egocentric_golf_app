@@ -20,6 +20,13 @@ import os
 import tempfile
 from pathlib import Path
 
+# TODO(V1.5): migrate from mp.solutions.pose (legacy) to
+# mediapipe.tasks.python.vision.PoseLandmarker. Google has marked the
+# `solutions` namespace as legacy; the Tasks API is the supported path
+# forward and exposes the same 33-keypoint BlazePose model with a more
+# stable interface and explicit running-mode (IMAGE / VIDEO / LIVE_STREAM).
+# Pin in pyproject.toml is mediapipe==0.10.14 to keep this code reproducible
+# until that migration happens.
 import modal
 
 # ─── modal app definition ─────────────────────────────────────────────────────
