@@ -40,6 +40,15 @@ PRE_WINDOW_MS = 5000
 POST_WINDOW_MS = 2000
 ONSET_MAD_K = 6.0  # threshold = median + k * MAD
 
+# DSP guard, NOT a sensitivity tunable. librosa.onset.onset_strength zero-pads
+# frames at the start of the spectral-flux computation; the first non-zero
+# bandpassed frame then produces a one-frame "fake onset" comparable in
+# magnitude to a real impact. We mask the first ONSET_WARMUP_MS of the onset
+# envelope to suppress that startup artifact. Threshold (ONSET_MAD_K) and
+# band edges (BAND_LOW_HZ / BAND_HIGH_HZ) are unchanged — this fixes the
+# DSP startup transient, it does not tune detection sensitivity.
+ONSET_WARMUP_MS = 150
+
 
 @dataclass
 class Impact:
@@ -87,11 +96,23 @@ def detect_impacts(wav_path: str | Path) -> list[Impact]:
         hop_length=256,
     )
 
+    # Suppress the spectral-flux startup artifact (see ONSET_WARMUP_MS docstring).
+    warmup_frames = int(np.ceil(ONSET_WARMUP_MS / 1000.0 * sr / 256))
+    if warmup_frames > 0:
+        onset[:warmup_frames] = 0.0
+
     # adaptive threshold via local MAD
     median = np.median(onset)
     mad = np.median(np.abs(onset - median)) + 1e-9
     threshold = median + ONSET_MAD_K * mad
 
+    # TODO(real-audio calibration): scipy.signal.find_peaks with `distance=` is
+    # amplitude-priority — within MIN_INTER_IMPACT_MS it keeps the larger peak
+    # and drops the smaller, regardless of which one is the real impact. A loud
+    # non-impact event (range chatter, neighbor divot strike, dropped club)
+    # inside that window can shadow a real swing. Revisit when we have a real
+    # range recording; likely needs prominence-based dedup or a smarter pairing
+    # strategy in windows_from_impacts that uses confidence scores.
     peaks, props = sps.find_peaks(
         onset,
         height=threshold,
