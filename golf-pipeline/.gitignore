@@ -1,0 +1,34 @@
+@"
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+.venv/
+venv/
+*.egg-info/
+
+# Node
+node_modules/
+.next/
+*.tsbuildinfo
+
+# Env / secrets
+.env
+.env.local
+backend/.env
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Build artifacts
+artifacts/
+*.npz
+*.mov
+*.mp4
+"@ | Out-File -Encoding utf8 .gitignore
