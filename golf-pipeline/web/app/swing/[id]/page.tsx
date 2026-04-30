@@ -5,23 +5,47 @@ import { SwingPlayer } from "@/components/SwingPlayer";
 
 export const dynamic = "force-dynamic";
 
-const METRIC_DEFS: Array<{
+interface MetricDef {
   key: keyof Swing["metrics"];
   label: string;
   unit: string;
-}> = [
-  { key: "tempoRatioBackswingDownswing", label: "tempo ratio", unit: ":1" },
-  { key: "backswingDurationMs", label: "backswing", unit: "ms" },
-  { key: "downswingDurationMs", label: "downswing", unit: "ms" },
-  { key: "shoulderTurnAtTopDeg", label: "shoulder turn", unit: "°" },
-  { key: "hipTurnAtTopDeg", label: "hip turn", unit: "°" },
-  { key: "xFactorDeg", label: "x-factor", unit: "°" },
-  { key: "wristHingeMaxDeg", label: "wrist hinge", unit: "°" },
-  { key: "headSwayMaxMm", label: "head sway", unit: "mm" },
-  { key: "headLiftMaxMm", label: "head lift", unit: "mm" },
-  { key: "spineTiltAtAddressDeg", label: "spine @ address", unit: "°" },
-  { key: "spineTiltAtImpactDeg", label: "spine @ impact", unit: "°" },
-  { key: "leadArmAngleAtTopDeg", label: "lead arm @ top", unit: "°" },
+}
+interface MetricGroup {
+  name: string;
+  metrics: MetricDef[];
+}
+
+// Grouped by what the metric tells you about the swing, not by the order
+// they're computed. wrist-hinge sits with rotation (it's a wind-up); lead
+// arm angle sits with posture (it's a static body angle).
+const METRIC_GROUPS: MetricGroup[] = [
+  {
+    name: "tempo",
+    metrics: [
+      { key: "tempoRatioBackswingDownswing", label: "tempo ratio", unit: ":1" },
+      { key: "backswingDurationMs", label: "backswing", unit: "ms" },
+      { key: "downswingDurationMs", label: "downswing", unit: "ms" },
+    ],
+  },
+  {
+    name: "rotation",
+    metrics: [
+      { key: "shoulderTurnAtTopDeg", label: "shoulder turn", unit: "°" },
+      { key: "hipTurnAtTopDeg", label: "hip turn", unit: "°" },
+      { key: "xFactorDeg", label: "x-factor", unit: "°" },
+      { key: "wristHingeMaxDeg", label: "wrist hinge", unit: "°" },
+    ],
+  },
+  {
+    name: "posture",
+    metrics: [
+      { key: "headSwayMaxMm", label: "head sway", unit: "mm" },
+      { key: "headLiftMaxMm", label: "head lift", unit: "mm" },
+      { key: "spineTiltAtAddressDeg", label: "spine @ address", unit: "°" },
+      { key: "spineTiltAtImpactDeg", label: "spine @ impact", unit: "°" },
+      { key: "leadArmAngleAtTopDeg", label: "lead arm @ top", unit: "°" },
+    ],
+  },
 ];
 
 export default async function SwingPage({ params }: { params: Promise<{ id: string }> }) {
@@ -93,27 +117,39 @@ export default async function SwingPage({ params }: { params: Promise<{ id: stri
       </section>
 
       <section>
-        <div className="flex items-baseline justify-between mb-4">
+        <div className="flex items-baseline justify-between mb-6">
           <h2 className="font-display text-2xl tracking-tight">Metrics</h2>
           <div className="font-mono text-[10px] uppercase tracking-wider2 text-ink-400">
             tier 1 · biomechanical ranges
           </div>
         </div>
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-          {METRIC_DEFS.map(({ key, label, unit }) => {
-            const v = metricsMap[key];
-            const r = rangesMap[key as string];
-            return (
-              <MetricBadge
-                key={key as string}
-                label={label}
-                value={v === null || v === undefined ? null : v}
-                unit={unit}
-                target={r?.target}
-                status={r?.status}
-              />
-            );
-          })}
+        <div className="space-y-7">
+          {METRIC_GROUPS.map((g) => (
+            <div key={g.name}>
+              <h3 className="font-mono text-[10px] uppercase tracking-wider2 text-ink-300 border-t border-ink-800 pt-3 pb-3 flex items-baseline justify-between">
+                <span>{g.name}</span>
+                <span className="text-ink-500 normal-case tracking-normal text-[10px] font-mono">
+                  {g.metrics.length} metric{g.metrics.length === 1 ? "" : "s"}
+                </span>
+              </h3>
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                {g.metrics.map(({ key, label, unit }) => {
+                  const v = metricsMap[key];
+                  const r = rangesMap[key as string];
+                  return (
+                    <MetricBadge
+                      key={key as string}
+                      label={label}
+                      value={v === null || v === undefined ? null : v}
+                      unit={unit}
+                      target={r?.target}
+                      status={r?.status}
+                    />
+                  );
+                })}
+              </div>
+            </div>
+          ))}
         </div>
       </section>
     </div>

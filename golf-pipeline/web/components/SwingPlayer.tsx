@@ -431,8 +431,8 @@ export const SwingPlayer = forwardRef<SwingPlayerHandle, Props>(function SwingPl
       </div>
 
       {(videoUrl || phaseList.length > 0) && (
-        <div className="border border-ink-800 px-4 py-3 space-y-3">
-          <div className="flex items-baseline justify-between">
+        <div className="border border-ink-800 px-4 pt-3 pb-4">
+          <div className="flex items-baseline justify-between mb-3">
             <div className="font-mono text-[10px] uppercase tracking-wider2 text-ink-400">
               timeline
             </div>
@@ -442,56 +442,134 @@ export const SwingPlayer = forwardRef<SwingPlayerHandle, Props>(function SwingPl
           </div>
 
           {videoUrl && (
-            <div
-              ref={scrubberRef}
-              onClick={handleScrubClick}
-              role="slider"
-              aria-label="seek video"
-              aria-valuemin={0}
-              aria-valuemax={duration || 0}
-              aria-valuenow={0}
-              tabIndex={-1}
-              className="relative h-2.5 bg-ink-900 border border-ink-800 hover:border-ink-700 cursor-pointer transition-colors"
-            >
-              {duration > 0 &&
-                phaseList.map(([name, p]) => {
-                  const pct = Math.max(
-                    0,
-                    Math.min(100, (p.tMs / 1000 / duration) * 100),
-                  );
-                  return (
-                    <div
-                      key={name}
-                      className="absolute top-0 bottom-0 w-px bg-ink-500 pointer-events-none"
-                      style={{ left: `${pct}%` }}
-                      title={`${name} · ${p.tMs} ms`}
-                    />
-                  );
-                })}
+            <div className="relative">
+              {/* Phase labels float above their dot positions on the
+                  track. Click jumps; replaces the old separate pill
+                  grid below the bar. */}
+              {duration > 0 && phaseList.length > 0 && (
+                <div className="relative h-4 mb-2">
+                  {phaseList.map(([name, p]) => {
+                    const pct = Math.max(
+                      0,
+                      Math.min(100, (p.tMs / 1000 / duration) * 100),
+                    );
+                    return (
+                      <button
+                        key={name}
+                        type="button"
+                        onClick={() => seekToMs(p.tMs)}
+                        title={`${name} · ${p.tMs} ms`}
+                        className="absolute top-0 -translate-x-1/2 px-1 font-mono text-[9px] uppercase tracking-wider2 text-ink-400 hover:text-accent focus:outline-none focus-visible:text-accent transition-colors whitespace-nowrap"
+                        style={{ left: `${pct}%` }}
+                      >
+                        {name}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+
               <div
-                ref={playheadRef}
-                className="absolute top-0 bottom-0 w-0.5 bg-accent pointer-events-none shadow-[0_0_4px_1px_theme(colors.accent)]"
-                style={{ left: "0%" }}
-                aria-hidden="true"
-              />
+                ref={scrubberRef}
+                onClick={handleScrubClick}
+                role="slider"
+                aria-label="seek video"
+                aria-valuemin={0}
+                aria-valuemax={duration || 0}
+                aria-valuenow={0}
+                tabIndex={-1}
+                className="relative h-7 bg-ink-900 border border-ink-800 hover:border-ink-700 cursor-pointer transition-colors group"
+              >
+                {/* Frame tick dots — every 100 ms. Capped so a
+                    pathologically long clip doesn't render thousands. */}
+                {duration > 0 &&
+                  Array.from({
+                    length: Math.min(80, Math.floor(duration * 10) + 1),
+                  }).map((_, i) => {
+                    const tickT = i * 0.1;
+                    const pct = (tickT / duration) * 100;
+                    return (
+                      <div
+                        key={i}
+                        className="absolute w-[2px] h-[2px] rounded-full bg-ink-700 pointer-events-none"
+                        style={{
+                          left: `${pct}%`,
+                          top: "50%",
+                          transform: "translate(-50%, -50%)",
+                        }}
+                      />
+                    );
+                  })}
+
+                {/* Phase dots on the track. Larger + glowing accent so
+                    they read as the structural markers, not the ticks. */}
+                {duration > 0 &&
+                  phaseList.map(([name, p]) => {
+                    const pct = Math.max(
+                      0,
+                      Math.min(100, (p.tMs / 1000 / duration) * 100),
+                    );
+                    return (
+                      <div
+                        key={name}
+                        className="absolute w-1.5 h-1.5 rounded-full bg-accent/70 pointer-events-none shadow-[0_0_4px_1px_theme(colors.accent)]"
+                        style={{
+                          left: `${pct}%`,
+                          top: "50%",
+                          transform: "translate(-50%, -50%)",
+                        }}
+                        aria-hidden="true"
+                      />
+                    );
+                  })}
+
+                {/* Playhead spans full track height; brighter than the
+                    phase dots so it reads as "you are here". */}
+                <div
+                  ref={playheadRef}
+                  className="absolute top-0 bottom-0 w-0.5 bg-accent pointer-events-none shadow-[0_0_5px_1px_theme(colors.accent)]"
+                  style={{ left: "0%" }}
+                  aria-hidden="true"
+                />
+              </div>
+
+              {/* tMs readouts under the labels — small, mono, only when
+                  the user actively wants the numbers. Lives on the
+                  scrubber container so labels above stay short. */}
+              {duration > 0 && phaseList.length > 0 && (
+                <div className="relative h-3 mt-1.5">
+                  {phaseList.map(([name, p]) => {
+                    const pct = Math.max(
+                      0,
+                      Math.min(100, (p.tMs / 1000 / duration) * 100),
+                    );
+                    return (
+                      <span
+                        key={name}
+                        className="absolute top-0 -translate-x-1/2 font-mono text-[9px] text-ink-500 num whitespace-nowrap"
+                        style={{ left: `${pct}%` }}
+                      >
+                        {p.tMs}
+                      </span>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           )}
 
-          {phaseList.length > 0 && (
+          {/* Video-less mode: no track to label, but the user still
+              wants to see what phases were detected. */}
+          {!videoUrl && phaseList.length > 0 && (
             <div className="grid grid-cols-6 gap-2 font-mono text-xs">
               {phaseList.map(([name, p]) => (
-                <button
+                <div
                   key={name}
-                  type="button"
-                  onClick={() => seekToMs(p.tMs)}
-                  disabled={!videoUrl}
-                  className="text-center px-2 py-2 border border-transparent hover:border-ink-700 hover:bg-ink-900 focus:outline-none focus-visible:border-accent/60 disabled:opacity-40 disabled:cursor-not-allowed transition-colors group"
+                  className="text-center px-2 py-2 border border-ink-800 opacity-60"
                 >
-                  <div className="text-ink-500 group-hover:text-ink-300 group-focus-visible:text-ink-200">
-                    {name}
-                  </div>
-                  <div className="text-ink-100 num">{p.tMs}ms</div>
-                </button>
+                  <div className="text-ink-500">{name}</div>
+                  <div className="text-ink-300 num">{p.tMs}ms</div>
+                </div>
               ))}
             </div>
           )}
