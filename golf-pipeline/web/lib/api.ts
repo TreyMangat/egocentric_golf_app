@@ -1,5 +1,7 @@
 // Minimal typed fetch wrapper for the FastAPI backend.
 
+import type { KeypointsRef } from "./pose";
+
 export const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8000";
 
 export async function api<T>(path: string, init?: RequestInit): Promise<T> {
@@ -58,6 +60,7 @@ export interface Swing {
   metrics: Metrics;
   ranges: Record<string, { target: [number, number]; status: RangeStatus }>;
   videoUrl?: string;
+  keypoints?: KeypointsRef | null;
 }
 
 export interface Session {

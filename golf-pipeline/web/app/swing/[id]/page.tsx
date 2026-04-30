@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { getSwing, type Swing } from "@/lib/api";
 import { MetricBadge } from "@/components/MetricBadge";
+import { SwingPlayer } from "@/components/SwingPlayer";
 
 export const dynamic = "force-dynamic";
 
@@ -52,22 +53,13 @@ export default async function SwingPage({ params }: { params: Promise<{ id: stri
 
       <section className="grid grid-cols-1 lg:grid-cols-[1.6fr_1fr] gap-8">
         <div className="space-y-4">
-          <div className="border border-ink-800 bg-ink-900 aspect-video flex items-center justify-center relative overflow-hidden">
-            {swing.videoUrl ? (
-              <video
-                controls
-                src={swing.videoUrl}
-                className="w-full h-full object-contain"
-              />
-            ) : (
-              <div className="text-ink-500 font-mono text-xs uppercase tracking-wider2">
-                video expired
-              </div>
-            )}
-            <div className="absolute top-3 left-3 font-mono text-[10px] uppercase tracking-wider2 text-ink-300 bg-ink-950/80 px-2 py-1 border border-ink-700">
-              {swing.capture.view} / {swing.capture.club}
-            </div>
-          </div>
+          <SwingPlayer
+            videoUrl={swing.videoUrl}
+            resolution={swing.capture.resolution}
+            view={swing.capture.view}
+            club={swing.capture.club}
+            keypoints={swing.keypoints}
+          />
 
           {swing.phases && (
             <div className="border border-ink-800 px-4 py-3">
