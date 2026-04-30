@@ -51,7 +51,7 @@ import time
 import urllib.error
 import urllib.request
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from rich.console import Console
@@ -135,9 +135,9 @@ def _preflight(api_base: str) -> None:
 
 def _make_fake_session_video(
     out_mov: Path, duration_s: float, impacts_ms: tuple[int, ...]
-) -> "object":
+):
     """Mux a black H.264 video with a synthesized impact wav into an .mov.
-    Returns the GroundTruth from synth_impacts.write_session.
+    Returns the GroundTruth dataclass from synth_impacts.write_session.
 
     Keyframe interval is set to 1s so cut_clip's `-c copy` cuts land
     cleanly enough to produce playable swing clips.
@@ -258,7 +258,7 @@ async def _main_async(args: argparse.Namespace) -> None:
     session_id = (
         f"smoke_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:6]}"
     )
-    started_at = datetime.now(timezone.utc)
+    started_at = datetime.now(UTC)
 
     _preflight(args.api)
     console.log(f"preflight ok; session_id={session_id}")
@@ -293,7 +293,7 @@ async def _main_async(args: argparse.Namespace) -> None:
     t0 = time.monotonic()
     try:
         result = await _wait_for_workflow(workflow_id, timeout_s=args.timeout)
-    except asyncio.TimeoutError:
+    except TimeoutError:
         sys.exit(f"workflow {workflow_id} did not finish in {args.timeout}s")
     elapsed = time.monotonic() - t0
     console.log(f"  workflow finished in {elapsed:.1f}s")

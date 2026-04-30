@@ -27,7 +27,6 @@ import synth_impacts  # noqa: E402
 
 from golf_pipeline.segmentation.audio_impact import detect_impacts  # noqa: E402
 
-
 TIMING_TOLERANCE_MS = 50
 DISTRACTOR_GUARD_MS = 200
 
@@ -65,8 +64,12 @@ def test_default_segmenter_recovers_planted_impacts(tmp_path):
             unmatched.append(planted)
 
     classes = [_classify(d, gt) for d in detected_ms]
-    distractor_fps = [d for d, c in zip(detected_ms, classes) if c == "distractor"]
-    silent_fps = [d for d, c in zip(detected_ms, classes) if c == "silent"]
+    distractor_fps = [
+        d for d, c in zip(detected_ms, classes, strict=True) if c == "distractor"
+    ]
+    silent_fps = [
+        d for d, c in zip(detected_ms, classes, strict=True) if c == "silent"
+    ]
     max_timing_err_ms = max((abs(m[2]) for m in matched), default=0)
 
     diag = (
