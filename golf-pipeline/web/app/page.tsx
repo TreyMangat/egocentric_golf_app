@@ -3,6 +3,48 @@ import { listSessions, type Session } from "@/lib/api";
 
 export const dynamic = "force-dynamic";
 
+interface Aggregates {
+  totalSwings: number;
+  sessionsThisMonth: number;
+  /** Weighted by swingCount across sessions, null when no data. */
+  avgTempo: number | null;
+}
+
+function aggregate(sessions: Session[]): Aggregates {
+  const now = new Date();
+  let totalSwings = 0;
+  let sessionsThisMonth = 0;
+  let weightedTempo = 0;
+  let weight = 0;
+
+  for (const s of sessions) {
+    totalSwings += s.swingCount;
+
+    const d = new Date(s.startedAt);
+    if (
+      d.getFullYear() === now.getFullYear() &&
+      d.getMonth() === now.getMonth()
+    ) {
+      sessionsThisMonth += 1;
+    }
+
+    // summarize_session writes 0.0 when a session has no swings yet —
+    // skip those so the average isn't dragged toward zero by empty
+    // sessions. Real swings always produce a non-zero ratio.
+    const t = s.summaryMetrics?.tempoRatioMean;
+    if (t && t > 0 && s.swingCount > 0) {
+      weightedTempo += t * s.swingCount;
+      weight += s.swingCount;
+    }
+  }
+
+  return {
+    totalSwings,
+    sessionsThisMonth,
+    avgTempo: weight > 0 ? weightedTempo / weight : null,
+  };
+}
+
 export default async function HomePage() {
   let sessions: Session[] = [];
   let error: string | null = null;
@@ -11,6 +53,8 @@ export default async function HomePage() {
   } catch (e) {
     error = (e as Error).message;
   }
+
+  const agg = aggregate(sessions);
 
   return (
     <div className="space-y-10">
@@ -50,6 +94,24 @@ export default async function HomePage() {
         </div>
       )}
 
+      {!error && sessions.length > 0 && (
+        <section
+          aria-label="Practice summary"
+          className="grid grid-cols-3 border border-ink-800 divide-x divide-ink-800 bg-ink-900/40"
+        >
+          <Stat label="total swings" value={agg.totalSwings.toString()} />
+          <Stat
+            label="sessions this month"
+            value={agg.sessionsThisMonth.toString()}
+          />
+          <Stat
+            label="avg tempo"
+            value={agg.avgTempo !== null ? agg.avgTempo.toFixed(2) : "—"}
+            suffix={agg.avgTempo !== null ? ":1" : undefined}
+          />
+        </section>
+      )}
+
       <div className="grid gap-2">
         {sessions.map((s) => (
           <Link
@@ -81,6 +143,32 @@ export default async function HomePage() {
             </div>
           </Link>
         ))}
+      </div>
+    </div>
+  );
+}
+
+function Stat({
+  label,
+  value,
+  suffix,
+}: {
+  label: string;
+  value: string;
+  suffix?: string;
+}) {
+  return (
+    <div className="px-5 py-5">
+      <div className="font-mono text-[10px] uppercase tracking-wider2 text-ink-400">
+        {label}
+      </div>
+      <div className="mt-2 font-mono text-3xl text-ink-100 num leading-none">
+        {value}
+        {suffix && (
+          <span className="text-ink-400 text-base ml-1.5 font-mono">
+            {suffix}
+          </span>
+        )}
       </div>
     </div>
   );
