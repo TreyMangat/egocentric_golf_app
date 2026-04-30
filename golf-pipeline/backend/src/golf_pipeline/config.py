@@ -18,6 +18,16 @@ def _required(name: str) -> str:
     return val
 
 
+_FALSY = {"", "0", "false", "no", "off"}
+
+
+def _bool_env(name: str, default: bool) -> bool:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() not in _FALSY
+
+
 @dataclass(frozen=True)
 class AwsConfig:
     region: str
@@ -44,6 +54,11 @@ class Config:
     user_id: str
     pipeline_version: str
     log_level: str
+    # When true, pose inference runs on local CPU via extract_pose_local
+    # and the .npz is uploaded to S3 from the worker. When false, the
+    # worker calls Modal's GPU function as in production. Defaults to
+    # true so a fresh checkout is usable on a laptop without Modal.
+    local_dev: bool
     aws: AwsConfig
     mongo: MongoConfig
     temporal: TemporalConfig
@@ -55,6 +70,7 @@ def get_config() -> Config:
         user_id=os.getenv("USER_ID", "trey"),
         pipeline_version=os.getenv("PIPELINE_VERSION", "0.1.0"),
         log_level=os.getenv("LOG_LEVEL", "INFO"),
+        local_dev=_bool_env("LOCAL_DEV", True),
         aws=AwsConfig(
             region=os.getenv("AWS_REGION", "us-east-1"),
             bucket=_required("S3_BUCKET"),

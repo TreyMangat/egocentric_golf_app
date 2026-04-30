@@ -158,19 +158,67 @@ def _ffmpeg_cut(src: str, dst: str, start_s: float, duration_s: float):
 async def run_pose_inference(
     clip_s3_uri: str, session_id: str, user_id: str, swing_id: str
 ) -> dict:
-    """Call Modal for GPU pose inference. Heartbeats while we wait."""
+    """Pose inference. Modal GPU in production, local CPU when LOCAL_DEV=true.
+
+    Either branch returns the same shape:
+        {fps, frames, schema, keypoints_uri, model}
+    so downstream activities don't care which one ran.
+    """
     cfg = get_config()
     out_key = keypoints_key(user_id, session_id, swing_id)
     out_uri = f"s3://{cfg.aws.bucket}/{out_key}"
 
-    # Import at activity-call time so the worker module doesn't pull modal at startup.
+    if cfg.local_dev:
+        return await _run_pose_inference_local(clip_s3_uri, out_key, out_uri)
+
+    # Production path: Modal GPU. Lazy-import so the worker process never
+    # touches modal RPC machinery when LOCAL_DEV=true.
     from golf_pipeline.modal_pose.inference import extract_pose
 
     activity.heartbeat({"stage": "submitting"})
-    fn = extract_pose.remote.aio  # async modal call
-    result = await fn(video_s3_uri=clip_s3_uri, out_keypoints_s3_uri=out_uri)
+    result = await extract_pose.remote.aio(
+        video_s3_uri=clip_s3_uri, out_keypoints_s3_uri=out_uri
+    )
     activity.heartbeat({"stage": "complete", "frames": result["frames"]})
     return result
+
+
+async def _run_pose_inference_local(
+    clip_s3_uri: str, out_key: str, out_uri: str
+) -> dict:
+    """Local-dev pose path: download clip → CPU MediaPipe → upload .npz.
+
+    Mirrors what extract_pose does on Modal, but on the worker host.
+    """
+    from golf_pipeline.modal_pose.inference import extract_pose_local
+
+    src_key = clip_s3_uri.split("/", 3)[-1]
+
+    with tempfile.TemporaryDirectory() as td:
+        local_clip = Path(td) / "clip.mov"
+        local_npz = Path(td) / "kp.npz"
+
+        activity.heartbeat({"stage": "downloading"})
+        await asyncio.to_thread(download_to_path, src_key, str(local_clip))
+
+        activity.heartbeat({"stage": "running_local_pose"})
+        info = await asyncio.to_thread(
+            extract_pose_local, str(local_clip), str(local_npz)
+        )
+
+        activity.heartbeat({"stage": "uploading", "frames": info["frames"]})
+        with open(local_npz, "rb") as f:
+            await asyncio.to_thread(
+                upload_bytes, out_key, f.read(), "application/octet-stream"
+            )
+
+    return {
+        "fps": info["fps"],
+        "frames": info["frames"],
+        "schema": info["schema"],
+        "keypoints_uri": out_uri,
+        "model": info["model"],
+    }
 
 
 # ─── 4. compute_metrics_and_write ─────────────────────────────────────────────
