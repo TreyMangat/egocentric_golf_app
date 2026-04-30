@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Phases } from "@/lib/api";
 import {
   POSE_CONNECTIONS,
@@ -109,6 +109,10 @@ export function SwingPlayer({
   const videoRef = useRef<HTMLVideoElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
   const rafRef = useRef<number | null>(null);
+  const scrubberRef = useRef<HTMLDivElement>(null);
+  const playheadRef = useRef<HTMLDivElement>(null);
+  // Seeded once `loadedmetadata` fires; used to position phase markers.
+  const [duration, setDuration] = useState<number>(0);
 
   const imageSeries: ImageKeypointSeries | null =
     keypoints?.inline?.image ?? null;
@@ -190,6 +194,75 @@ export function SwingPlayer({
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [videoUrl, fps, phaseList]);
+
+  // Scrubber playhead. Imperative left% via ref, same reasoning as the
+  // SVG: setState 60×/sec for a single style attribute is wasteful. Lives
+  // in its own effect so the scrubber works even when there are no
+  // keypoints (the SVG-overlay effect early-returns in that case).
+  useEffect(() => {
+    if (!videoUrl) return;
+    const video = videoRef.current;
+    if (!video) return;
+    let raf: number | null = null;
+
+    const updatePlayhead = () => {
+      const head = playheadRef.current;
+      const d = video.duration;
+      if (!head || !Number.isFinite(d) || d <= 0) return;
+      const pct = Math.max(0, Math.min(100, (video.currentTime / d) * 100));
+      head.style.left = `${pct}%`;
+    };
+
+    const onLoadedMeta = () => {
+      if (Number.isFinite(video.duration)) setDuration(video.duration);
+      updatePlayhead();
+    };
+    const loop = () => {
+      updatePlayhead();
+      raf = requestAnimationFrame(loop);
+    };
+    const onPlay = () => {
+      if (raf === null) raf = requestAnimationFrame(loop);
+    };
+    const onStop = () => {
+      if (raf !== null) {
+        cancelAnimationFrame(raf);
+        raf = null;
+      }
+      updatePlayhead();
+    };
+
+    video.addEventListener("loadedmetadata", onLoadedMeta);
+    video.addEventListener("play", onPlay);
+    video.addEventListener("pause", onStop);
+    video.addEventListener("seeked", updatePlayhead);
+    video.addEventListener("ended", onStop);
+
+    // Browser may have already loaded metadata before this effect ran.
+    if (Number.isFinite(video.duration) && video.duration > 0) onLoadedMeta();
+
+    return () => {
+      if (raf !== null) cancelAnimationFrame(raf);
+      video.removeEventListener("loadedmetadata", onLoadedMeta);
+      video.removeEventListener("play", onPlay);
+      video.removeEventListener("pause", onStop);
+      video.removeEventListener("seeked", updatePlayhead);
+      video.removeEventListener("ended", onStop);
+    };
+  }, [videoUrl]);
+
+  const handleScrubClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    const v = videoRef.current;
+    const bar = scrubberRef.current;
+    if (!v || !bar) return;
+    if (!Number.isFinite(v.duration) || v.duration <= 0) return;
+    const rect = bar.getBoundingClientRect();
+    const fraction = Math.max(
+      0,
+      Math.min(1, (e.clientX - rect.left) / rect.width),
+    );
+    v.currentTime = fraction * v.duration;
+  };
 
   useEffect(() => {
     if (!hasOverlay || !imageSeries) return;
@@ -286,27 +359,71 @@ export function SwingPlayer({
         )}
       </div>
 
-      {phaseList.length > 0 && (
-        <div className="border border-ink-800 px-4 py-3">
-          <div className="font-mono text-[10px] uppercase tracking-wider2 text-ink-400 mb-2">
-            phases
+      {(videoUrl || phaseList.length > 0) && (
+        <div className="border border-ink-800 px-4 py-3 space-y-3">
+          <div className="flex items-baseline justify-between">
+            <div className="font-mono text-[10px] uppercase tracking-wider2 text-ink-400">
+              timeline
+            </div>
+            <div className="font-mono text-[10px] text-ink-500 num">
+              {duration > 0 ? `${duration.toFixed(2)}s` : "—"}
+            </div>
           </div>
-          <div className="grid grid-cols-6 gap-2 font-mono text-xs">
-            {phaseList.map(([name, p]) => (
-              <button
-                key={name}
-                type="button"
-                onClick={() => seekToMs(p.tMs)}
-                disabled={!videoUrl}
-                className="text-center px-2 py-2 border border-transparent hover:border-ink-700 hover:bg-ink-900 focus:outline-none focus-visible:border-accent/60 disabled:opacity-40 disabled:cursor-not-allowed transition-colors group"
-              >
-                <div className="text-ink-500 group-hover:text-ink-300 group-focus-visible:text-ink-200">
-                  {name}
-                </div>
-                <div className="text-ink-100 num">{p.tMs}ms</div>
-              </button>
-            ))}
-          </div>
+
+          {videoUrl && (
+            <div
+              ref={scrubberRef}
+              onClick={handleScrubClick}
+              role="slider"
+              aria-label="seek video"
+              aria-valuemin={0}
+              aria-valuemax={duration || 0}
+              aria-valuenow={0}
+              tabIndex={-1}
+              className="relative h-2.5 bg-ink-900 border border-ink-800 hover:border-ink-700 cursor-pointer transition-colors"
+            >
+              {duration > 0 &&
+                phaseList.map(([name, p]) => {
+                  const pct = Math.max(
+                    0,
+                    Math.min(100, (p.tMs / 1000 / duration) * 100),
+                  );
+                  return (
+                    <div
+                      key={name}
+                      className="absolute top-0 bottom-0 w-px bg-ink-500 pointer-events-none"
+                      style={{ left: `${pct}%` }}
+                      title={`${name} · ${p.tMs} ms`}
+                    />
+                  );
+                })}
+              <div
+                ref={playheadRef}
+                className="absolute top-0 bottom-0 w-0.5 bg-accent pointer-events-none shadow-[0_0_4px_1px_theme(colors.accent)]"
+                style={{ left: "0%" }}
+                aria-hidden="true"
+              />
+            </div>
+          )}
+
+          {phaseList.length > 0 && (
+            <div className="grid grid-cols-6 gap-2 font-mono text-xs">
+              {phaseList.map(([name, p]) => (
+                <button
+                  key={name}
+                  type="button"
+                  onClick={() => seekToMs(p.tMs)}
+                  disabled={!videoUrl}
+                  className="text-center px-2 py-2 border border-transparent hover:border-ink-700 hover:bg-ink-900 focus:outline-none focus-visible:border-accent/60 disabled:opacity-40 disabled:cursor-not-allowed transition-colors group"
+                >
+                  <div className="text-ink-500 group-hover:text-ink-300 group-focus-visible:text-ink-200">
+                    {name}
+                  </div>
+                  <div className="text-ink-100 num">{p.tMs}ms</div>
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       )}
     </>
