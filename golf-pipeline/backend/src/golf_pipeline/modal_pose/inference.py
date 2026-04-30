@@ -76,7 +76,7 @@ def extract_pose(
         {
             "fps": int,
             "frames": int,
-            "schema": "blazepose-33" | "hamer-21",
+            "schema": "blazepose-33-v2" | "hamer-21",
             "keypoints_uri": "s3://.../swing.npz",
             "model": "blazepose-full",
         }
@@ -106,7 +106,12 @@ def extract_pose(
             raise NotImplementedError(f"V1 only supports blazepose-full, got {model_name!r}")
 
         n_joints = 33
-        kp = np.full((n_frames, n_joints, 4), np.nan, dtype=np.float32)
+        # Two parallel arrays so downstream consumers can pick the right
+        # space: world (metric, hip-centered) for biomechanics, image
+        # (normalized, in-frame) for the SVG overlay. BlazePose's image-
+        # space z is unreliable so the image array drops it.
+        kp_world = np.full((n_frames, n_joints, 4), np.nan, dtype=np.float32)
+        kp_image = np.full((n_frames, n_joints, 3), np.nan, dtype=np.float32)
         with mp.solutions.pose.Pose(
             static_image_mode=False,
             model_complexity=2,
@@ -123,20 +128,25 @@ def extract_pose(
                 res = pose.process(rgb)
                 if res.pose_world_landmarks:
                     for j, lm in enumerate(res.pose_world_landmarks.landmark):
-                        kp[i, j, 0] = lm.x
-                        kp[i, j, 1] = lm.y
-                        kp[i, j, 2] = lm.z
-                        kp[i, j, 3] = lm.visibility
+                        kp_world[i, j] = (lm.x, lm.y, lm.z, lm.visibility)
+                if res.pose_landmarks:
+                    for j, lm in enumerate(res.pose_landmarks.landmark):
+                        kp_image[i, j] = (lm.x, lm.y, lm.visibility)
                 i += 1
         cap.release()
 
-        np.savez_compressed(local_npz, keypoints=kp, fps=fps)
+        np.savez_compressed(
+            local_npz,
+            keypoints_world=kp_world,
+            keypoints_image=kp_image,
+            fps=fps,
+        )
         s3.upload_file(str(local_npz), dst_bucket, dst_key)
 
     return {
         "fps": fps,
         "frames": int(n_frames),
-        "schema": "blazepose-33",
+        "schema": "blazepose-33-v2",
         "keypoints_uri": out_keypoints_s3_uri,
         "model": model_name,
     }
@@ -154,7 +164,9 @@ def extract_pose_local(video_path: str, out_npz: str) -> dict:
     cap = cv2.VideoCapture(video_path)
     fps = float(cap.get(cv2.CAP_PROP_FPS) or 60)
     n_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
-    kp = np.full((n_frames, 33, 4), np.nan, dtype=np.float32)
+    # See the dual-array note in extract_pose for why both spaces are stored.
+    kp_world = np.full((n_frames, 33, 4), np.nan, dtype=np.float32)
+    kp_image = np.full((n_frames, 33, 3), np.nan, dtype=np.float32)
 
     with mp.solutions.pose.Pose(
         static_image_mode=False,
@@ -171,10 +183,23 @@ def extract_pose_local(video_path: str, out_npz: str) -> dict:
             res = pose.process(rgb)
             if res.pose_world_landmarks:
                 for j, lm in enumerate(res.pose_world_landmarks.landmark):
-                    kp[i, j] = (lm.x, lm.y, lm.z, lm.visibility)
+                    kp_world[i, j] = (lm.x, lm.y, lm.z, lm.visibility)
+            if res.pose_landmarks:
+                for j, lm in enumerate(res.pose_landmarks.landmark):
+                    kp_image[i, j] = (lm.x, lm.y, lm.visibility)
             i += 1
     cap.release()
 
     os.makedirs(os.path.dirname(out_npz) or ".", exist_ok=True)
-    np.savez_compressed(out_npz, keypoints=kp, fps=fps)
-    return {"fps": fps, "frames": n_frames, "schema": "blazepose-33", "model": "blazepose-full"}
+    np.savez_compressed(
+        out_npz,
+        keypoints_world=kp_world,
+        keypoints_image=kp_image,
+        fps=fps,
+    )
+    return {
+        "fps": fps,
+        "frames": n_frames,
+        "schema": "blazepose-33-v2",
+        "model": "blazepose-full",
+    }

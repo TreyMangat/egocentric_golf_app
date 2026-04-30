@@ -55,7 +55,7 @@ def main(
     pose_info = extract_pose_local(str(video), str(npz_path))
     console.log(f"  {pose_info['frames']} frames @ {pose_info['fps']:.1f} fps")
 
-    kp = np.load(npz_path)["keypoints"]
+    kp = np.load(npz_path)["keypoints_world"]
     fps = pose_info["fps"]
 
     impact_frame = None

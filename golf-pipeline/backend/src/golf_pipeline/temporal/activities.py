@@ -237,7 +237,9 @@ async def compute_metrics_and_write(
         local_npz = Path(td) / "kp.npz"
         _, key = parse_s3_uri(keypoints_s3_uri)
         await asyncio.to_thread(download_to_path, key, str(local_npz))
-        kp = np.load(local_npz)["keypoints"]
+        # Metrics use the metric/world-space array. The image-space copy
+        # (keypoints_image) lives alongside it for the SVG overlay path.
+        kp = np.load(local_npz)["keypoints_world"]
 
     # the impact frame is anchored from the audio segmenter — convert ms → frame
     impact_frame = int(round((window.impact_ms - window.start_ms) / 1000 * fps))
@@ -267,7 +269,7 @@ async def compute_metrics_and_write(
         metrics=metrics,
         ranges=ranges,
         keypoints=KeypointsRef(
-            schema="blazepose-33",
+            schema="blazepose-33-v2",
             fps=int(fps),
             storageRef=keypoints_s3_uri,
         ),

@@ -3,17 +3,41 @@
 // The connection list mirrors mediapipe.python.solutions.pose.POSE_CONNECTIONS
 // at the time the backend pinned mediapipe==0.10.14. Keep in sync if the
 // pose model changes (the backend's keypoints.schema field is the source of
-// truth — currently "blazepose-33").
+// truth — currently "blazepose-33-v2").
+//
+// "v2" stores both image- and world-space arrays in the inline payload:
+//   - image: 33×3 (x_norm, y_norm, visibility) — what the overlay renders.
+//     BlazePose's image-space z is unreliable so we drop it.
+//   - world: 33×4 (x, y, z, visibility) in metric units, hip-centered —
+//     what the metrics path consumes.
 
-export type Joint = [x: number, y: number, z: number, visibility: number];
-export type FrameKeypoints = Joint[];
-export type KeypointSeries = FrameKeypoints[];
+export type ImageJoint = readonly [
+  x: number,
+  y: number,
+  visibility: number,
+];
+export type WorldJoint = readonly [
+  x: number,
+  y: number,
+  z: number,
+  visibility: number,
+];
+
+export type ImageFrame = readonly ImageJoint[];
+export type WorldFrame = readonly WorldJoint[];
+export type ImageKeypointSeries = readonly ImageFrame[];
+export type WorldKeypointSeries = readonly WorldFrame[];
+
+export interface InlineKeypoints {
+  image: ImageKeypointSeries;
+  world?: WorldKeypointSeries;
+}
 
 export interface KeypointsRef {
   schema: string;
   fps: number;
   storageRef?: string | null;
-  inline?: KeypointSeries | null;
+  inline?: InlineKeypoints | null;
 }
 
 export const POSE_CONNECTIONS: ReadonlyArray<readonly [number, number]> = [

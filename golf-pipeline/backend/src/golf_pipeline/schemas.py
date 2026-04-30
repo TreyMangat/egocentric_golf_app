@@ -132,13 +132,22 @@ class Pipeline(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
 
+class InlineKeypoints(BaseModel):
+    """Dual-space inline payload: world coords for biomechanics, image
+    coords for the overlay renderer. See `KeypointsRef.schema` for the
+    layout version (blazepose-33-v2 stores both)."""
+
+    image: list[list[list[float]]]  # [frame][joint][x_norm, y_norm, vis]
+    world: list[list[list[float]]] | None = None  # [frame][joint][x, y, z, vis]
+
+
 class KeypointsRef(BaseModel):
     """Pose timeseries — usually offloaded to S3; small inline copy is fine for tests."""
 
-    schema_name: str = Field(alias="schema")  # "blazepose-33", "hamer-21", ...
+    schema_name: str = Field(alias="schema")  # "blazepose-33-v2", "hamer-21", ...
     fps: int
     storage_ref: str | None = Field(default=None, alias="storageRef")  # s3://.../keypoints.npz
-    inline: list[list[list[float]]] | None = None  # [frame][joint][x,y,z,vis]
+    inline: InlineKeypoints | None = None
 
     model_config = ConfigDict(populate_by_name=True)
 

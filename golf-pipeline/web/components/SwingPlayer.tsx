@@ -5,8 +5,9 @@ import {
   POSE_CONNECTIONS,
   VIS_HIGH,
   VIS_MIN,
-  type Joint,
-  type KeypointSeries,
+  type ImageFrame,
+  type ImageJoint,
+  type ImageKeypointSeries,
   type KeypointsRef,
 } from "@/lib/pose";
 
@@ -26,19 +27,19 @@ const SVG_NS = "http://www.w3.org/2000/svg";
 const ACCENT = "#d4ff5a";
 const FADED = "#e8ebf2"; // ink-100
 
-function isUsableJoint(j: Joint | undefined | null): j is Joint {
+function isUsableJoint(j: ImageJoint | undefined | null): j is ImageJoint {
   return (
     Array.isArray(j) &&
-    j.length >= 4 &&
+    j.length >= 3 &&
     Number.isFinite(j[0]) &&
     Number.isFinite(j[1]) &&
-    Number.isFinite(j[3])
+    Number.isFinite(j[2])
   );
 }
 
 function drawFrame(
   svg: SVGSVGElement,
-  joints: KeypointSeries[number] | undefined,
+  joints: ImageFrame | undefined,
   width: number,
   height: number,
 ) {
@@ -51,8 +52,8 @@ function drawFrame(
     const ja = joints[a];
     const jb = joints[b];
     if (!isUsableJoint(ja) || !isUsableJoint(jb)) continue;
-    if (ja[3] < VIS_MIN || jb[3] < VIS_MIN) continue;
-    const lowConfidence = ja[3] < VIS_HIGH || jb[3] < VIS_HIGH;
+    if (ja[2] < VIS_MIN || jb[2] < VIS_MIN) continue;
+    const lowConfidence = ja[2] < VIS_HIGH || jb[2] < VIS_HIGH;
     const line = document.createElementNS(SVG_NS, "line");
     line.setAttribute("x1", String(ja[0] * width));
     line.setAttribute("y1", String(ja[1] * height));
@@ -68,8 +69,8 @@ function drawFrame(
   for (let i = 0; i < joints.length; i++) {
     const j = joints[i];
     if (!isUsableJoint(j)) continue;
-    if (j[3] < VIS_MIN) continue;
-    const high = j[3] >= VIS_HIGH;
+    if (j[2] < VIS_MIN) continue;
+    const high = j[2] >= VIS_HIGH;
     const c = document.createElementNS(SVG_NS, "circle");
     c.setAttribute("cx", String(j[0] * width));
     c.setAttribute("cy", String(j[1] * height));
@@ -91,18 +92,19 @@ export function SwingPlayer({
   const svgRef = useRef<SVGSVGElement>(null);
   const rafRef = useRef<number | null>(null);
 
-  const inline = keypoints?.inline ?? null;
+  const imageSeries: ImageKeypointSeries | null =
+    keypoints?.inline?.image ?? null;
   const fps = keypoints?.fps ?? 60;
   const [resW, resH] = resolution;
-  const hasOverlay = inline !== null && inline.length > 0;
+  const hasOverlay = imageSeries !== null && imageSeries.length > 0;
 
   useEffect(() => {
-    if (!hasOverlay || !inline) return;
+    if (!hasOverlay || !imageSeries) return;
     const video = videoRef.current;
     const svg = svgRef.current;
     if (!video || !svg) return;
 
-    const totalFrames = inline.length;
+    const totalFrames = imageSeries.length;
 
     const drawOnce = () => {
       const t = video.currentTime;
@@ -110,7 +112,7 @@ export function SwingPlayer({
         totalFrames - 1,
         Math.max(0, Math.floor(t * fps)),
       );
-      drawFrame(svg, inline[idx], resW, resH);
+      drawFrame(svg, imageSeries[idx], resW, resH);
     };
 
     const loop = () => {
@@ -152,7 +154,7 @@ export function SwingPlayer({
       video.removeEventListener("loadedmetadata", drawOnce);
       video.removeEventListener("ended", onStop);
     };
-  }, [hasOverlay, inline, fps, resW, resH]);
+  }, [hasOverlay, imageSeries, fps, resW, resH]);
 
   return (
     <div className="border border-ink-800 bg-ink-900 aspect-video flex items-center justify-center relative overflow-hidden">
