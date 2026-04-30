@@ -1,0 +1,7 @@
+# Repo-root safety net for env files. Real ignores live in
+# golf-pipeline/.gitignore — this exists so a stray .env at the repo
+# root can't sneak past those subtree-scoped patterns again.
+.env
+.env.*
+!.env.example
+!.env.*.example
