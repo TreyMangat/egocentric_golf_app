@@ -58,6 +58,7 @@ export default async function SwingPage({ params }: { params: Promise<{ id: stri
             resolution={swing.capture.resolution}
             view={swing.capture.view}
             club={swing.capture.club}
+            fps={swing.capture.fps}
             keypoints={swing.keypoints}
             phases={swing.phases}
           />

@@ -17,6 +17,8 @@ interface Props {
   resolution: [number, number];
   view: string;
   club: string;
+  /** Capture fps — drives ±1 frame keyboard stepping. */
+  fps: number;
   keypoints: KeypointsRef | null | undefined;
   phases: Phases | null | undefined;
 }
@@ -100,6 +102,7 @@ export function SwingPlayer({
   resolution,
   view,
   club,
+  fps,
   keypoints,
   phases,
 }: Props) {
@@ -109,7 +112,11 @@ export function SwingPlayer({
 
   const imageSeries: ImageKeypointSeries | null =
     keypoints?.inline?.image ?? null;
-  const fps = keypoints?.fps ?? 60;
+  // The keypoint timeseries can be sampled at a different rate than the
+  // video (e.g. video=60fps, keypoints decimated to 30fps). The keyboard
+  // ±1 frame stepping uses the video fps; overlay frame lookup uses the
+  // keypoint fps. They're equal in production today, distinct in spec.
+  const kpFps = keypoints?.fps ?? fps;
   const [resW, resH] = resolution;
   const hasOverlay = imageSeries !== null && imageSeries.length > 0;
   const phaseList = orderedPhases(phases);
@@ -119,6 +126,70 @@ export function SwingPlayer({
     if (!v) return;
     v.currentTime = tMs / 1000;
   };
+
+  // Keyboard navigation: ←/→ step one video frame, ↑/↓ jump phase markers.
+  // Listener lives on window so it works regardless of which child is
+  // focused, but we bail when an editable surface owns the event so a
+  // future text input on this page won't lose its arrow-key cursor moves.
+  useEffect(() => {
+    if (!videoUrl) return;
+    const frameStep = 1 / Math.max(fps, 1);
+
+    const isEditable = (target: EventTarget | null): boolean => {
+      if (!(target instanceof HTMLElement)) return false;
+      const tag = target.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return true;
+      return target.isContentEditable;
+    };
+
+    const phaseTimes = phaseList.map(([, p]) => p.tMs / 1000);
+
+    const onKey = (e: KeyboardEvent) => {
+      if (e.altKey || e.ctrlKey || e.metaKey) return;
+      if (isEditable(e.target)) return;
+      const v = videoRef.current;
+      if (!v) return;
+
+      switch (e.key) {
+        case "ArrowLeft": {
+          e.preventDefault();
+          if (!v.paused) v.pause();
+          v.currentTime = Math.max(0, v.currentTime - frameStep);
+          break;
+        }
+        case "ArrowRight": {
+          e.preventDefault();
+          if (!v.paused) v.pause();
+          // Don't read v.duration — it's NaN until loadedmetadata.
+          // Browser clamps overshoot anyway.
+          v.currentTime = v.currentTime + frameStep;
+          break;
+        }
+        case "ArrowUp": {
+          if (phaseTimes.length === 0) return;
+          e.preventDefault();
+          // Previous phase: last one strictly before currentTime.
+          // 10ms epsilon so a click that lands exactly on a marker
+          // can still step backward off it.
+          const t = v.currentTime - 0.01;
+          const prev = [...phaseTimes].reverse().find((pt) => pt < t);
+          if (prev !== undefined) v.currentTime = prev;
+          break;
+        }
+        case "ArrowDown": {
+          if (phaseTimes.length === 0) return;
+          e.preventDefault();
+          const t = v.currentTime + 0.01;
+          const next = phaseTimes.find((pt) => pt > t);
+          if (next !== undefined) v.currentTime = next;
+          break;
+        }
+      }
+    };
+
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [videoUrl, fps, phaseList]);
 
   useEffect(() => {
     if (!hasOverlay || !imageSeries) return;
@@ -132,7 +203,7 @@ export function SwingPlayer({
       const t = video.currentTime;
       const idx = Math.min(
         totalFrames - 1,
-        Math.max(0, Math.floor(t * fps)),
+        Math.max(0, Math.floor(t * kpFps)),
       );
       drawFrame(svg, imageSeries[idx], resW, resH);
     };
@@ -176,7 +247,7 @@ export function SwingPlayer({
       video.removeEventListener("loadedmetadata", drawOnce);
       video.removeEventListener("ended", onStop);
     };
-  }, [hasOverlay, imageSeries, fps, resW, resH]);
+  }, [hasOverlay, imageSeries, kpFps, resW, resH]);
 
   return (
     <>
