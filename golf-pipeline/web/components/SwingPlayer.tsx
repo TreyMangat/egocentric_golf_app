@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import type { Phases } from "@/lib/api";
 import {
   POSE_CONNECTIONS,
   VIS_HIGH,
@@ -17,6 +18,19 @@ interface Props {
   view: string;
   club: string;
   keypoints: KeypointsRef | null | undefined;
+  phases: Phases | null | undefined;
+}
+
+type PhaseEntry = [name: string, marker: { frame: number; tMs: number }];
+
+function orderedPhases(phases: Phases | null | undefined): PhaseEntry[] {
+  if (!phases) return [];
+  // Object.entries preserves insertion order, but the API result is a dict
+  // and we'd rather not bet that the JSON encoder keeps the schema's order
+  // forever. Sort by tMs so the row reads address → finish regardless.
+  return (Object.entries(phases) as PhaseEntry[]).sort(
+    (a, b) => a[1].tMs - b[1].tMs,
+  );
 }
 
 const SVG_NS = "http://www.w3.org/2000/svg";
@@ -87,6 +101,7 @@ export function SwingPlayer({
   view,
   club,
   keypoints,
+  phases,
 }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
@@ -97,6 +112,13 @@ export function SwingPlayer({
   const fps = keypoints?.fps ?? 60;
   const [resW, resH] = resolution;
   const hasOverlay = imageSeries !== null && imageSeries.length > 0;
+  const phaseList = orderedPhases(phases);
+
+  const seekToMs = (tMs: number) => {
+    const v = videoRef.current;
+    if (!v) return;
+    v.currentTime = tMs / 1000;
+  };
 
   useEffect(() => {
     if (!hasOverlay || !imageSeries) return;
@@ -157,39 +179,65 @@ export function SwingPlayer({
   }, [hasOverlay, imageSeries, fps, resW, resH]);
 
   return (
-    <div className="border border-ink-800 bg-ink-900 aspect-video flex items-center justify-center relative overflow-hidden">
-      {videoUrl ? (
-        <video
-          ref={videoRef}
-          controls
-          src={videoUrl}
-          className="w-full h-full object-contain"
-        />
-      ) : (
-        <div className="text-ink-500 font-mono text-xs uppercase tracking-wider2">
-          video expired
+    <>
+      <div className="border border-ink-800 bg-ink-900 aspect-video flex items-center justify-center relative overflow-hidden">
+        {videoUrl ? (
+          <video
+            ref={videoRef}
+            controls
+            src={videoUrl}
+            className="w-full h-full object-contain"
+          />
+        ) : (
+          <div className="text-ink-500 font-mono text-xs uppercase tracking-wider2">
+            video expired
+          </div>
+        )}
+
+        {videoUrl && hasOverlay && (
+          <svg
+            ref={svgRef}
+            viewBox={`0 0 ${resW} ${resH}`}
+            preserveAspectRatio="xMidYMid meet"
+            className="absolute inset-0 w-full h-full pointer-events-none"
+            aria-hidden="true"
+          />
+        )}
+
+        <div className="absolute top-3 left-3 font-mono text-[10px] uppercase tracking-wider2 text-ink-300 bg-ink-950/80 px-2 py-1 border border-ink-700">
+          {view} / {club}
         </div>
-      )}
 
-      {videoUrl && hasOverlay && (
-        <svg
-          ref={svgRef}
-          viewBox={`0 0 ${resW} ${resH}`}
-          preserveAspectRatio="xMidYMid meet"
-          className="absolute inset-0 w-full h-full pointer-events-none"
-          aria-hidden="true"
-        />
-      )}
-
-      <div className="absolute top-3 left-3 font-mono text-[10px] uppercase tracking-wider2 text-ink-300 bg-ink-950/80 px-2 py-1 border border-ink-700">
-        {view} / {club}
+        {videoUrl && !hasOverlay && keypoints?.storageRef && (
+          <div className="absolute bottom-3 right-3 font-mono text-[10px] uppercase tracking-wider2 text-ink-400 bg-ink-950/80 px-2 py-1 border border-ink-700">
+            keypoints offloaded · overlay deferred to v1.5
+          </div>
+        )}
       </div>
 
-      {videoUrl && !hasOverlay && keypoints?.storageRef && (
-        <div className="absolute bottom-3 right-3 font-mono text-[10px] uppercase tracking-wider2 text-ink-400 bg-ink-950/80 px-2 py-1 border border-ink-700">
-          keypoints offloaded · overlay deferred to v1.5
+      {phaseList.length > 0 && (
+        <div className="border border-ink-800 px-4 py-3">
+          <div className="font-mono text-[10px] uppercase tracking-wider2 text-ink-400 mb-2">
+            phases
+          </div>
+          <div className="grid grid-cols-6 gap-2 font-mono text-xs">
+            {phaseList.map(([name, p]) => (
+              <button
+                key={name}
+                type="button"
+                onClick={() => seekToMs(p.tMs)}
+                disabled={!videoUrl}
+                className="text-center px-2 py-2 border border-transparent hover:border-ink-700 hover:bg-ink-900 focus:outline-none focus-visible:border-accent/60 disabled:opacity-40 disabled:cursor-not-allowed transition-colors group"
+              >
+                <div className="text-ink-500 group-hover:text-ink-300 group-focus-visible:text-ink-200">
+                  {name}
+                </div>
+                <div className="text-ink-100 num">{p.tMs}ms</div>
+              </button>
+            ))}
+          </div>
         </div>
       )}
-    </div>
+    </>
   );
 }

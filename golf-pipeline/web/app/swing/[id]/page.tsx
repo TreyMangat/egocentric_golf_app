@@ -59,23 +59,8 @@ export default async function SwingPage({ params }: { params: Promise<{ id: stri
             view={swing.capture.view}
             club={swing.capture.club}
             keypoints={swing.keypoints}
+            phases={swing.phases}
           />
-
-          {swing.phases && (
-            <div className="border border-ink-800 px-4 py-3">
-              <div className="font-mono text-[10px] uppercase tracking-wider2 text-ink-400 mb-2">
-                phases
-              </div>
-              <div className="grid grid-cols-6 gap-2 font-mono text-xs">
-                {Object.entries(swing.phases).map(([name, p]) => (
-                  <div key={name} className="text-center">
-                    <div className="text-ink-500">{name}</div>
-                    <div className="text-ink-100 num">{p.tMs}ms</div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
         </div>
 
         <aside className="space-y-2">
