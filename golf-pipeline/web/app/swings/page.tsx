@@ -1,13 +1,9 @@
-import Link from "next/link";
 import { listSwings, type Swing } from "@/lib/api";
+import { SwingsList } from "@/components/SwingsList";
 
 export const dynamic = "force-dynamic";
 
 const PAGE_LIMIT = 50;
-
-function fmtTimestamp(iso: string): string {
-  return new Date(iso).toISOString().replace("T", " ").slice(0, 16);
-}
 
 export default async function SwingsPage() {
   let swings: Swing[] = [];
@@ -60,52 +56,7 @@ export default async function SwingsPage() {
         </div>
       )}
 
-      <div className="grid gap-2">
-        {swings.map((s) => {
-          const tempo = s.metrics.tempoRatioBackswingDownswing;
-          return (
-            <Link
-              key={s._id}
-              href={`/swing/${s._id}`}
-              className="group flex items-center justify-between border border-ink-800 hover:border-accent/60 hover:bg-ink-900 px-5 py-4 transition-colors"
-            >
-              <div className="flex items-baseline gap-5 min-w-0">
-                <span className="font-mono text-xs text-ink-500 tracking-wider2 uppercase num shrink-0">
-                  {fmtTimestamp(s.createdAt)}
-                </span>
-                <span className="font-display text-lg group-hover:text-accent transition-colors shrink-0">
-                  {s.capture.club}
-                </span>
-                <span className="font-mono text-[10px] uppercase tracking-wider2 text-ink-400 shrink-0">
-                  {s.capture.view}
-                </span>
-                <span className="font-mono text-[10px] text-ink-500 truncate hidden md:inline normal-case">
-                  {s.sessionId}
-                </span>
-              </div>
-              <div className="flex items-center gap-6 shrink-0">
-                {s.tags.outcome && (
-                  <span className="font-mono text-[10px] uppercase tracking-wider2 text-ink-300">
-                    {s.tags.outcome}
-                    {s.tags.shape && (
-                      <span className="text-ink-500"> / {s.tags.shape}</span>
-                    )}
-                  </span>
-                )}
-                {tempo !== null && tempo !== undefined ? (
-                  <div className="font-mono text-xs text-ink-300 num">
-                    tempo&nbsp;
-                    <span className="text-ink-100">{tempo.toFixed(2)}</span>
-                  </div>
-                ) : (
-                  <div className="font-mono text-xs text-ink-600 num">—</div>
-                )}
-                <span className="text-ink-600 group-hover:text-accent">→</span>
-              </div>
-            </Link>
-          );
-        })}
-      </div>
+      <SwingsList swings={swings} />
     </div>
   );
 }

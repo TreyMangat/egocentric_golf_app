@@ -1,6 +1,12 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import {
+  forwardRef,
+  useEffect,
+  useImperativeHandle,
+  useRef,
+  useState,
+} from "react";
 import type { Phases } from "@/lib/api";
 import {
   POSE_CONNECTIONS,
@@ -21,6 +27,21 @@ interface Props {
   fps: number;
   keypoints: KeypointsRef | null | undefined;
   phases: Phases | null | undefined;
+  /** Cross-player sync hooks (compare view). All optional. */
+  onPlay?: () => void;
+  onPause?: () => void;
+  onSeek?: (currentTime: number) => void;
+  /** When true, hides the keyboard listener so two SwingPlayers on one
+   *  page don't both react to the same arrow press. */
+  disableKeyboard?: boolean;
+}
+
+export interface SwingPlayerHandle {
+  play: () => void;
+  pause: () => void;
+  seekTo: (seconds: number) => void;
+  getCurrentTime: () => number;
+  isPaused: () => boolean;
 }
 
 type PhaseEntry = [name: string, marker: { frame: number; tMs: number }];
@@ -97,7 +118,7 @@ function drawFrame(
   }
 }
 
-export function SwingPlayer({
+export const SwingPlayer = forwardRef<SwingPlayerHandle, Props>(function SwingPlayer({
   videoUrl,
   resolution,
   view,
@@ -105,7 +126,11 @@ export function SwingPlayer({
   fps,
   keypoints,
   phases,
-}: Props) {
+  onPlay,
+  onPause,
+  onSeek,
+  disableKeyboard,
+}, ref) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
   const rafRef = useRef<number | null>(null);
@@ -131,12 +156,58 @@ export function SwingPlayer({
     v.currentTime = tMs / 1000;
   };
 
+  // Imperative handle for the compare view to drive playback from outside.
+  // Empty deps array — videoRef is a ref, the closures capture .current
+  // each call.
+  useImperativeHandle(
+    ref,
+    () => ({
+      play: () => {
+        // Promise rejection fires on autoplay-blocked / user-gesture
+        // requirements; the parent recovers via the user clicking again.
+        videoRef.current?.play().catch(() => {});
+      },
+      pause: () => videoRef.current?.pause(),
+      seekTo: (s: number) => {
+        const v = videoRef.current;
+        if (!v) return;
+        v.currentTime = s;
+      },
+      getCurrentTime: () => videoRef.current?.currentTime ?? 0,
+      isPaused: () => videoRef.current?.paused ?? true,
+    }),
+    [],
+  );
+
+  // Cross-player callbacks. Separate effect so the existing scrubber +
+  // overlay effects don't grow conditionals.
+  useEffect(() => {
+    if (!videoUrl) return;
+    if (!onPlay && !onPause && !onSeek) return;
+    const v = videoRef.current;
+    if (!v) return;
+
+    const handlePlay = () => onPlay?.();
+    const handlePause = () => onPause?.();
+    const handleSeeked = () => onSeek?.(v.currentTime);
+
+    v.addEventListener("play", handlePlay);
+    v.addEventListener("pause", handlePause);
+    v.addEventListener("seeked", handleSeeked);
+    return () => {
+      v.removeEventListener("play", handlePlay);
+      v.removeEventListener("pause", handlePause);
+      v.removeEventListener("seeked", handleSeeked);
+    };
+  }, [videoUrl, onPlay, onPause, onSeek]);
+
   // Keyboard navigation: ←/→ step one video frame, ↑/↓ jump phase markers.
   // Listener lives on window so it works regardless of which child is
   // focused, but we bail when an editable surface owns the event so a
   // future text input on this page won't lose its arrow-key cursor moves.
   useEffect(() => {
     if (!videoUrl) return;
+    if (disableKeyboard) return;
     const frameStep = 1 / Math.max(fps, 1);
 
     const isEditable = (target: EventTarget | null): boolean => {
@@ -193,7 +264,7 @@ export function SwingPlayer({
 
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [videoUrl, fps, phaseList]);
+  }, [videoUrl, fps, phaseList, disableKeyboard]);
 
   // Scrubber playhead. Imperative left% via ref, same reasoning as the
   // SVG: setState 60×/sec for a single style attribute is wasteful. Lives
@@ -428,4 +499,4 @@ export function SwingPlayer({
       )}
     </>
   );
-}
+});
