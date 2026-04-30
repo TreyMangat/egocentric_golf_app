@@ -157,6 +157,9 @@ def _make_fake_session_video(
         )
 
         out_mov.parent.mkdir(parents=True, exist_ok=True)
+        # -g 1 makes every frame a keyframe so cut_clip's `-c copy` cuts
+        # land at the requested timestamp regardless of impact alignment.
+        # File-size cost is trivial on 30 s of black H.264.
         cmd = [
             "ffmpeg", "-y",
             "-f", "lavfi",
@@ -164,7 +167,7 @@ def _make_fake_session_video(
             "-i", str(wav),
             "-c:v", "libx264",
             "-pix_fmt", "yuv420p",
-            "-g", "30",
+            "-g", "1",
             "-c:a", "aac",
             "-shortest",
             str(out_mov),
@@ -264,6 +267,18 @@ async def _main_async(args: argparse.Namespace) -> None:
     console.log(f"preflight ok; session_id={session_id}")
 
     impacts_ms = tuple(args.impacts)
+
+    # Fail fast if any planted impact's post-window runs past the end of
+    # the synthesized session — otherwise the segmenter's window would be
+    # silently clipped and the smoke test's signal becomes muddy.
+    from golf_pipeline.segmentation.audio_impact import POST_WINDOW_MS
+    last_window_end_ms = max(impacts_ms) + POST_WINDOW_MS
+    if last_window_end_ms > args.duration * 1000:
+        sys.exit(
+            f"impacts={impacts_ms} with POST_WINDOW_MS={POST_WINDOW_MS} "
+            f"requires duration >= {last_window_end_ms / 1000:.2f}s, "
+            f"got --duration {args.duration}s"
+        )
 
     with tempfile.TemporaryDirectory() as td:
         out_mov = Path(td) / "session.mov"

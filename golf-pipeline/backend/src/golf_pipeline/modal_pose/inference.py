@@ -20,7 +20,8 @@ import os
 import tempfile
 from pathlib import Path
 
-# TODO(V1.5): migrate from mp.solutions.pose (legacy) to
+# TODO(V1.5): migrate BOTH extract_pose (Modal GPU) and extract_pose_local
+# (CPU local-dev) from mp.solutions.pose (legacy) to
 # mediapipe.tasks.python.vision.PoseLandmarker. Google has marked the
 # `solutions` namespace as legacy; the Tasks API is the supported path
 # forward and exposes the same 33-keypoint BlazePose model with a more
@@ -28,6 +29,8 @@ from pathlib import Path
 # Pin in pyproject.toml is mediapipe==0.10.14 to keep this code reproducible
 # until that migration happens.
 import modal
+
+from golf_pipeline.storage.s3 import parse_s3_uri
 
 # ─── modal app definition ─────────────────────────────────────────────────────
 
@@ -51,16 +54,6 @@ GPU = "T4"  # bump to "A10G" for HaMeR
 
 # AWS creds passed via Modal secrets (`modal secret create aws ...`)
 aws_secret = modal.Secret.from_name("aws-credentials")
-
-
-# ─── helpers ──────────────────────────────────────────────────────────────────
-
-
-def _parse_s3_uri(uri: str) -> tuple[str, str]:
-    assert uri.startswith("s3://"), f"Expected s3:// uri, got {uri!r}"
-    rest = uri[5:]
-    bucket, _, key = rest.partition("/")
-    return bucket, key
 
 
 # ─── the function ─────────────────────────────────────────────────────────────
@@ -93,8 +86,8 @@ def extract_pose(
     import mediapipe as mp
     import numpy as np
 
-    src_bucket, src_key = _parse_s3_uri(video_s3_uri)
-    dst_bucket, dst_key = _parse_s3_uri(out_keypoints_s3_uri)
+    src_bucket, src_key = parse_s3_uri(video_s3_uri)
+    dst_bucket, dst_key = parse_s3_uri(out_keypoints_s3_uri)
 
     with tempfile.TemporaryDirectory() as td:
         local_video = Path(td) / "swing.mov"

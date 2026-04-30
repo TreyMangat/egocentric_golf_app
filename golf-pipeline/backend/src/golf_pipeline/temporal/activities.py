@@ -41,6 +41,7 @@ from golf_pipeline.segmentation.audio_impact import segment_video
 from golf_pipeline.storage.s3 import (
     download_to_path,
     keypoints_key,
+    parse_s3_uri,
     presign_get,
     raw_video_key,
     upload_bytes,
@@ -192,7 +193,7 @@ async def _run_pose_inference_local(
     """
     from golf_pipeline.modal_pose.inference import extract_pose_local
 
-    src_key = clip_s3_uri.split("/", 3)[-1]
+    _, src_key = parse_s3_uri(clip_s3_uri)
 
     with tempfile.TemporaryDirectory() as td:
         local_clip = Path(td) / "clip.mov"
@@ -237,8 +238,7 @@ async def compute_metrics_and_write(
 
     with tempfile.TemporaryDirectory() as td:
         local_npz = Path(td) / "kp.npz"
-        # strip the s3://bucket/ prefix
-        key = keypoints_s3_uri.split("/", 3)[-1]
+        _, key = parse_s3_uri(keypoints_s3_uri)
         await asyncio.to_thread(download_to_path, key, str(local_npz))
         kp = np.load(local_npz)["keypoints"]
 

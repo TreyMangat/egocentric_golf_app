@@ -25,6 +25,21 @@ def s3_client():
     return _S3_SESSION
 
 
+def parse_s3_uri(uri: str) -> tuple[str, str]:
+    """Split an `s3://bucket/key` URI into `(bucket, key)`.
+
+    Single source of truth for this so callers don't reach for ad-hoc
+    `uri.split("/", 3)[-1]` slicing that mis-parses on malformed input.
+    """
+    if not uri.startswith("s3://"):
+        raise ValueError(f"expected s3:// uri, got {uri!r}")
+    rest = uri[len("s3://") :]
+    bucket, _, key = rest.partition("/")
+    if not bucket or not key:
+        raise ValueError(f"s3 uri missing bucket or key: {uri!r}")
+    return bucket, key
+
+
 def raw_video_key(user_id: str, session_id: str, clip_id: str) -> str:
     cfg = get_config()
     return f"{cfg.aws.prefix_raw}/{user_id}/{session_id}/{clip_id}.mov"

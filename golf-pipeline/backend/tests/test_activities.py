@@ -117,3 +117,17 @@ async def test_local_dev_uses_local_pose_and_skips_modal(local_dev_env, monkeypa
         "keypoints_uri": "s3://test-bucket/kp/t/sess/swing_001.npz",
         "model": "blazepose-full",
     }
+
+    # Lazy-import lock-in: if a future contributor hoists
+    # `from golf_pipeline.modal_pose.inference import extract_pose` to module
+    # top of activities.py, the symbol resolves at activities-import time
+    # before this test's monkeypatch runs, and `inf.extract_pose` ends up
+    # being the real Modal Function object instead of our tripwire. The
+    # tripwire still catches `.remote.aio` calls — but the lazy-import
+    # *intent* documented in activities.py would have silently regressed.
+    # Pin that here.
+    assert inf.extract_pose is tripwire, (
+        "extract_pose was resolved before the test patched it — the lazy-"
+        "import in run_pose_inference's not-local_dev branch was likely "
+        "hoisted to module top. Restore the lazy import."
+    )

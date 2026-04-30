@@ -98,12 +98,15 @@ def detect_impacts(wav_path: str | Path) -> list[Impact]:
 
     # Suppress the spectral-flux startup artifact (see ONSET_WARMUP_MS docstring).
     warmup_frames = int(np.ceil(ONSET_WARMUP_MS / 1000.0 * sr / 256))
-    if warmup_frames > 0:
-        onset[:warmup_frames] = 0.0
+    onset[:warmup_frames] = 0.0
 
-    # adaptive threshold via local MAD
-    median = np.median(onset)
-    mad = np.median(np.abs(onset - median)) + 1e-9
+    # adaptive threshold via local MAD — computed over the post-warmup region
+    # only so the leading zeros don't bias median/MAD. This keeps the warmup
+    # mask a true no-op on threshold statistics; sensitivity (ONSET_MAD_K,
+    # band edges) is still untouched.
+    onset_for_stats = onset[warmup_frames:]
+    median = np.median(onset_for_stats)
+    mad = np.median(np.abs(onset_for_stats - median)) + 1e-9
     threshold = median + ONSET_MAD_K * mad
 
     # TODO(real-audio calibration): scipy.signal.find_peaks with `distance=` is
