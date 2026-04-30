@@ -7,7 +7,6 @@ logs. Long-running activities heartbeat so Temporal can detect hangs.
 from __future__ import annotations
 
 import asyncio
-import io
 import subprocess
 import tempfile
 from datetime import datetime
@@ -42,11 +41,9 @@ from golf_pipeline.storage.s3 import (
     download_to_path,
     keypoints_key,
     parse_s3_uri,
-    presign_get,
     raw_video_key,
     upload_bytes,
 )
-
 
 # ─── 1. segment_session_audio ─────────────────────────────────────────────────
 
@@ -296,8 +293,16 @@ async def summarize_session(session_id: str, user_id: str, completed_swing_ids: 
     if not swings:
         return
 
-    tempos = [s.metrics.tempo_ratio_backswing_downswing for s in swings if s.metrics.tempo_ratio_backswing_downswing]
-    sways = [s.metrics.head_sway_max_mm for s in swings if s.metrics.head_sway_max_mm is not None]
+    tempos = [
+        s.metrics.tempo_ratio_backswing_downswing
+        for s in swings
+        if s.metrics.tempo_ratio_backswing_downswing
+    ]
+    sways = [
+        s.metrics.head_sway_max_mm
+        for s in swings
+        if s.metrics.head_sway_max_mm is not None
+    ]
 
     summary = {
         "tempoRatioMean": float(np.mean(tempos)) if tempos else 0.0,

@@ -50,7 +50,11 @@ def keypoints_key(user_id: str, session_id: str, swing_id: str) -> str:
     return f"{cfg.aws.prefix_keypoints}/{user_id}/{session_id}/{swing_id}.npz"
 
 
-def presign_put(key: str, content_type: str = "video/quicktime", expires_seconds: int = 3600) -> str:
+def presign_put(
+    key: str,
+    content_type: str = "video/quicktime",
+    expires_seconds: int = 3600,
+) -> str:
     """Generate a presigned PUT URL for the iOS app to upload directly to S3."""
     cfg = get_config()
     return s3_client().generate_presigned_url(
