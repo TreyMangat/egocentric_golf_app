@@ -19,6 +19,13 @@ from temporalio.common import RetryPolicy
 
 with workflow.unsafe.imports_passed_through():
     from golf_pipeline.schemas import IngestRequest, SwingWindow
+    from golf_pipeline.temporal.activities import (
+        compute_metrics_and_write,
+        cut_clip,
+        run_pose_inference,
+        segment_session_audio,
+        summarize_session,
+    )
 
 
 # ─── ProcessSwing (child) ──────────────────────────────────────────────────────
@@ -38,7 +45,7 @@ class ProcessSwing:
 
         # 1. Cut the swing clip from the session video and upload.
         clip_uri = await workflow.execute_activity(
-            "cut_clip",
+            cut_clip,
             args=[session_id, user_id, window],
             schedule_to_close_timeout=timedelta(minutes=2),
             retry_policy=retry,
@@ -46,7 +53,7 @@ class ProcessSwing:
 
         # 2. Pose inference on Modal (long-running, with heartbeats).
         pose_result = await workflow.execute_activity(
-            "run_pose_inference",
+            run_pose_inference,
             args=[clip_uri, session_id, user_id, window.swing_id],
             schedule_to_close_timeout=timedelta(minutes=8),
             heartbeat_timeout=timedelta(seconds=30),
@@ -55,7 +62,7 @@ class ProcessSwing:
 
         # 3. Compute metrics from pose timeseries (uses audio-anchored impact frame).
         await workflow.execute_activity(
-            "compute_metrics_and_write",
+            compute_metrics_and_write,
             args=[
                 session_id,
                 user_id,
@@ -85,7 +92,7 @@ class ProcessSession:
 
         # 1. Probe + segment by audio.
         windows: list[SwingWindow] = await workflow.execute_activity(
-            "segment_session_audio",
+            segment_session_audio,
             args=[request],
             schedule_to_close_timeout=timedelta(minutes=10),
             retry_policy=retry,
@@ -117,7 +124,7 @@ class ProcessSession:
 
         # 4. Summarize the session.
         await workflow.execute_activity(
-            "summarize_session",
+            summarize_session,
             args=[request.session_id, request.user_id, completed],
             schedule_to_close_timeout=timedelta(minutes=2),
             retry_policy=retry,
