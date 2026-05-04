@@ -15,12 +15,15 @@ GET   /api/v1/swings/:id/similar  → vector-search similar swings (V1.5)
 
 from __future__ import annotations
 
+import json
+import math
 import os
 from datetime import datetime
 from typing import Any
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from temporalio.client import Client
 from temporalio.contrib.pydantic import pydantic_data_converter
@@ -40,8 +43,37 @@ from golf_pipeline.schemas import IngestRequest, Session
 from golf_pipeline.storage.s3 import presign_get, presign_put, raw_video_key
 from golf_pipeline.temporal.workflows import ProcessSession
 
+
+def _nan_to_none(o: Any) -> Any:
+    if isinstance(o, float):
+        return None if math.isnan(o) or math.isinf(o) else o
+    if isinstance(o, dict):
+        return {k: _nan_to_none(v) for k, v in o.items()}
+    if isinstance(o, (list, tuple)):
+        return [_nan_to_none(v) for v in o]
+    return o
+
+
+class NaNSafeJSONResponse(JSONResponse):
+    """JSON response that maps float NaN/Inf → null. Smoke/black-frame metrics
+    legitimately produce NaN; the default encoder rejects them with allow_nan=False
+    and surfaces a bare 500 to clients."""
+
+    def render(self, content: Any) -> bytes:
+        return json.dumps(
+            _nan_to_none(content),
+            ensure_ascii=False,
+            allow_nan=False,
+            separators=(",", ":"),
+        ).encode("utf-8")
+
+
 cfg = get_config()
-app = FastAPI(title="golf-pipeline API", version=cfg.pipeline_version)
+app = FastAPI(
+    title="golf-pipeline API",
+    version=cfg.pipeline_version,
+    default_response_class=NaNSafeJSONResponse,
+)
 
 origins = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000").split(",")
 app.add_middleware(
