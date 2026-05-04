@@ -140,9 +140,15 @@ def _check_temporal() -> tuple[bool, str]:
 
     async def aio() -> tuple[bool, str]:
         from temporalio.client import Client
+        from temporalio.contrib.pydantic import pydantic_data_converter
 
         client = await asyncio.wait_for(
-            Client.connect(target, namespace=namespace), timeout=5
+            Client.connect(
+                target,
+                namespace=namespace,
+                data_converter=pydantic_data_converter,
+            ),
+            timeout=5,
         )
         # Connect succeeds locally even if the server is wrong because gRPC
         # is lazy — force a real RPC by iterating list_workflows once.

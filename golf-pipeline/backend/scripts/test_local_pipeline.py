@@ -229,12 +229,15 @@ def _finalize(api: str, user_id: str, session_id: str, gt) -> str:
 
 async def _wait_for_workflow(workflow_id: str, timeout_s: float) -> dict:
     from temporalio.client import Client
+    from temporalio.contrib.pydantic import pydantic_data_converter
 
     from golf_pipeline.config import get_config
 
     cfg = get_config()
     client = await Client.connect(
-        cfg.temporal.target, namespace=cfg.temporal.namespace
+        cfg.temporal.target,
+        namespace=cfg.temporal.namespace,
+        data_converter=pydantic_data_converter,
     )
     handle = client.get_workflow_handle(workflow_id)
     return await asyncio.wait_for(handle.result(), timeout=timeout_s)

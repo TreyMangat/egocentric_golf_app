@@ -23,6 +23,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from temporalio.client import Client
+from temporalio.contrib.pydantic import pydantic_data_converter
 
 from golf_pipeline.config import get_config
 from golf_pipeline.db.client import (
@@ -130,7 +131,11 @@ async def finalize_session(session_id: str, body: FinalizeRequest):
         capture_metadata=body.capture_metadata,
     )
 
-    client = await Client.connect(cfg.temporal.target, namespace=cfg.temporal.namespace)
+    client = await Client.connect(
+        cfg.temporal.target,
+        namespace=cfg.temporal.namespace,
+        data_converter=pydantic_data_converter,
+    )
     handle = await client.start_workflow(
         ProcessSession.run,
         request,

@@ -10,6 +10,7 @@ import asyncio
 import logging
 
 from temporalio.client import Client
+from temporalio.contrib.pydantic import pydantic_data_converter
 from temporalio.worker import Worker
 
 from golf_pipeline.config import get_config
@@ -24,7 +25,11 @@ async def main():
 
     await ensure_indexes()
 
-    client = await Client.connect(cfg.temporal.target, namespace=cfg.temporal.namespace)
+    client = await Client.connect(
+        cfg.temporal.target,
+        namespace=cfg.temporal.namespace,
+        data_converter=pydantic_data_converter,
+    )
     worker = Worker(
         client,
         task_queue=cfg.temporal.task_queue,
