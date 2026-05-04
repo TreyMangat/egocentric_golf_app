@@ -5,3 +5,12 @@
 .env.*
 !.env.example
 !.env.*.example
+
+# Claude Code internals
+.claude/
+
+# Ad-hoc debugging scripts (underscore prefix convention)
+**/scripts/_*.py
+
+# Log files
+*.log
