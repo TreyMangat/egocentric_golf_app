@@ -43,6 +43,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -57,6 +58,10 @@ from pathlib import Path
 from rich.console import Console
 
 console = Console()
+
+# Default to the same USER_ID the API filters on, so smoke runs land in the
+# dashboard. Falls back to "smoke" only when nothing's configured.
+DEFAULT_USER_ID = os.getenv("USER_ID", "smoke")
 
 # scripts/ isn't on the package path; import the synth tool as a sibling.
 _SCRIPTS = Path(__file__).resolve().parent
@@ -260,7 +265,7 @@ async def _print_swings(session_id: str) -> None:
 
 
 async def _main_async(args: argparse.Namespace) -> None:
-    user_id = "smoke"
+    user_id = args.user_id
     session_id = (
         f"smoke_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:6]}"
     )
@@ -334,6 +339,14 @@ def main() -> None:
     parser.add_argument(
         "--timeout", type=float, default=1800.0,
         help="seconds to wait for the workflow before giving up",
+    )
+    parser.add_argument(
+        "--user-id", default=DEFAULT_USER_ID,
+        help=(
+            "user_id to write smoke data under (default: $USER_ID env, "
+            "else 'smoke'). Match what the API/dashboard filters on so the "
+            "session shows up."
+        ),
     )
     args = parser.parse_args()
     asyncio.run(_main_async(args))
