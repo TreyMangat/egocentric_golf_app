@@ -94,7 +94,12 @@ def extract_pose(
         local_npz = Path(td) / "swing.npz"
 
         # download
-        s3 = boto3.client("s3")
+        region = os.environ["AWS_REGION"]
+        s3 = boto3.client(
+            "s3",
+            region_name=region,
+            endpoint_url=f"https://s3.{region}.amazonaws.com",
+        )
         s3.download_file(src_bucket, src_key, str(local_video))
 
         # extract pose frame-by-frame

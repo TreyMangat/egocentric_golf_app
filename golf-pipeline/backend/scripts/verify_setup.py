@@ -105,7 +105,11 @@ def _check_aws_s3() -> tuple[bool, str]:
     region = os.getenv("AWS_REGION", "us-east-1")
     import boto3  # imported here so a missing dep doesn't take out the whole script
 
-    s3 = boto3.client("s3", region_name=region)
+    s3 = boto3.client(
+        "s3",
+        region_name=region,
+        endpoint_url=f"https://s3.{region}.amazonaws.com",
+    )
     resp = s3.list_objects_v2(Bucket=bucket, MaxKeys=1)
     n = resp.get("KeyCount", 0)
     return True, f"bucket={bucket} reachable (KeyCount@HEAD={n})"
