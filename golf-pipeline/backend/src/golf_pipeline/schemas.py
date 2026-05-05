@@ -6,21 +6,20 @@ These map 1:1 to the Mongo documents described in PROJECT_SPEC.md.
 from __future__ import annotations
 
 from datetime import datetime
-from enum import Enum
+from enum import StrEnum
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-
 # ─── enums ─────────────────────────────────────────────────────────────────────
 
 
-class View(str, Enum):
+class View(StrEnum):
     DTL = "DTL"  # down the line
     FO = "FO"  # face on
 
 
-class Club(str, Enum):
+class Club(StrEnum):
     DRIVER = "driver"
     THREE_W = "3w"
     FIVE_W = "5w"
@@ -39,13 +38,13 @@ class Club(str, Enum):
     PUTTER = "putter"
 
 
-class Outcome(str, Enum):
+class Outcome(StrEnum):
     GOOD = "good"
     OK = "ok"
     BAD = "bad"
 
 
-class Shape(str, Enum):
+class Shape(StrEnum):
     STRAIGHT = "straight"
     DRAW = "draw"
     FADE = "fade"
@@ -162,6 +161,8 @@ class Swing(BaseModel):
     user_id: str = Field(alias="userId")
     session_id: str = Field(alias="sessionId")
     created_at: datetime = Field(alias="createdAt")
+    status: Literal["accepted", "rejected"] = "accepted"
+    motion_score: float = Field(default=0.0, alias="motionScore")
     capture: Capture
     tags: Tags = Field(default_factory=Tags)
     phases: Phases | None = None

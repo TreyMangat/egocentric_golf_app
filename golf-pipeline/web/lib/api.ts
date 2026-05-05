@@ -47,6 +47,8 @@ export interface Swing {
   userId: string;
   sessionId: string;
   createdAt: string;
+  status: "accepted" | "rejected";
+  motionScore: number;
   capture: {
     view: "DTL" | "FO";
     club: string;

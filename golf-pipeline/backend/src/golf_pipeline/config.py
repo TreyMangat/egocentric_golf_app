@@ -68,7 +68,7 @@ class Config:
 def get_config() -> Config:
     return Config(
         user_id=os.getenv("USER_ID", "trey"),
-        pipeline_version=os.getenv("PIPELINE_VERSION", "0.1.0"),
+        pipeline_version=os.getenv("PIPELINE_VERSION", "0.1.1"),
         log_level=os.getenv("LOG_LEVEL", "INFO"),
         local_dev=_bool_env("LOCAL_DEV", True),
         aws=AwsConfig(

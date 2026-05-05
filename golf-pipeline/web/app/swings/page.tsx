@@ -18,9 +18,10 @@ const CLUB_ORDER = [
 export default async function SwingsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ club?: string }>;
+  searchParams: Promise<{ club?: string; rejected?: string }>;
 }) {
-  const { club: clubParam } = await searchParams;
+  const { club: clubParam, rejected } = await searchParams;
+  const showRejected = rejected === "1";
 
   let allSwings: Swing[] = [];
   let error: string | null = null;
@@ -40,9 +41,13 @@ export default async function SwingsPage({
       ? clubParam
       : null;
 
-  const swings = activeClub
+  const clubSwings = activeClub
     ? allSwings.filter((s) => s.capture.club === activeClub)
     : allSwings;
+  const rejectedSwings = clubSwings.filter((s) => s.status === "rejected");
+  const swings = showRejected
+    ? clubSwings
+    : clubSwings.filter((s) => s.status !== "rejected");
 
   return (
     <div className="space-y-10">
@@ -53,9 +58,9 @@ export default async function SwingsPage({
             <span className="text-ink-500 ml-3 font-mono text-base align-middle num">
               {swings.length.toString().padStart(3, "0")}
             </span>
-            {activeClub && (
+            {(activeClub || !showRejected) && (
               <span className="text-ink-600 ml-2 font-mono text-base align-middle num">
-                /{allSwings.length.toString().padStart(3, "0")}
+                /{clubSwings.length.toString().padStart(3, "0")}
               </span>
             )}
           </h1>
@@ -89,7 +94,34 @@ export default async function SwingsPage({
       )}
 
       {!error && allSwings.length > 0 && presentClubs.length > 1 && (
-        <ClubFilterBar present={presentClubs} active={activeClub} />
+        <ClubFilterBar
+          present={presentClubs}
+          active={activeClub}
+          showRejected={showRejected}
+        />
+      )}
+
+      {!error && rejectedSwings.length > 0 && (
+        <div className="flex items-center justify-between border-t border-b border-ink-800 py-3">
+          <div className="font-mono text-[10px] uppercase tracking-wider2 text-ink-500">
+            rejected audio detections hidden by default
+          </div>
+          {showRejected ? (
+            <Link
+              href={swingsHref(activeClub, false)}
+              className="font-mono text-[10px] uppercase tracking-wider2 text-ink-400 hover:text-accent"
+            >
+              hide rejected
+            </Link>
+          ) : (
+            <Link
+              href={swingsHref(activeClub, true)}
+              className="font-mono text-[10px] uppercase tracking-wider2 text-signal-amber hover:text-accent"
+            >
+              show {rejectedSwings.length} rejected
+            </Link>
+          )}
+        </div>
       )}
 
       {!error && activeClub && swings.length === 0 && (
@@ -111,9 +143,10 @@ export default async function SwingsPage({
 interface FilterBarProps {
   present: readonly string[];
   active: string | null;
+  showRejected: boolean;
 }
 
-function ClubFilterBar({ present, active }: FilterBarProps) {
+function ClubFilterBar({ present, active, showRejected }: FilterBarProps) {
   return (
     <nav
       aria-label="Filter swings by club"
@@ -121,19 +154,27 @@ function ClubFilterBar({ present, active }: FilterBarProps) {
     >
       <FilterPill
         label="all"
-        href="/swings"
+        href={swingsHref(null, showRejected)}
         active={active === null}
       />
       {present.map((c) => (
         <FilterPill
           key={c}
           label={c}
-          href={`/swings?club=${c}`}
+          href={swingsHref(c, showRejected)}
           active={active === c}
         />
       ))}
     </nav>
   );
+}
+
+function swingsHref(club: string | null, showRejected: boolean) {
+  const params = new URLSearchParams();
+  if (club) params.set("club", club);
+  if (showRejected) params.set("rejected", "1");
+  const query = params.toString();
+  return query ? `/swings?${query}` : "/swings";
 }
 
 function FilterPill({

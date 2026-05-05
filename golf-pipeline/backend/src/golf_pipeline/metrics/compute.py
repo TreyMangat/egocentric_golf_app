@@ -165,7 +165,11 @@ def head_displacement_mm(kp: np.ndarray, frame: int) -> tuple[float, float]:
     return abs(float(d[0]) * 1000), float(d[1]) * 1000
 
 
-def head_excursions_mm(kp: np.ndarray, address_frame: int, finish_frame: int) -> tuple[float, float]:
+def head_excursions_mm(
+    kp: np.ndarray,
+    address_frame: int,
+    finish_frame: int,
+) -> tuple[float, float]:
     """Max lateral sway and vertical lift across the swing window."""
     rel = kp[address_frame : finish_frame + 1, NOSE] - kp[address_frame, NOSE]
     sway = float(np.nanmax(np.abs(rel[:, 0]))) * 1000

@@ -16,6 +16,7 @@ import subprocess
 import sys
 import tempfile
 from pathlib import Path
+from typing import Annotated
 
 import numpy as np
 import typer
@@ -32,10 +33,13 @@ console = Console()
 
 @app.command()
 def main(
-    video: Path = typer.Option(..., exists=True, dir_okay=False, readable=True),
+    video: Annotated[
+        Path,
+        typer.Option(..., exists=True, dir_okay=False, readable=True),
+    ],
     club: str = "7i",
-    view: str = typer.Option("DTL", help="DTL or FO"),
-    lead: str = typer.Option("L", help="Lead side: L (RH golfer) or R (LH golfer)"),
+    view: Annotated[str, typer.Option(help="DTL or FO")] = "DTL",
+    lead: Annotated[str, typer.Option(help="Lead side: L (RH golfer) or R (LH golfer)")] = "L",
     out_dir: Path = Path("artifacts"),
 ):
     out_dir.mkdir(parents=True, exist_ok=True)

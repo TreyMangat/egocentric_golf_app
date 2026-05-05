@@ -49,6 +49,11 @@ export function SwingsList({ swings }: Props) {
                 <span className="font-mono text-[10px] uppercase tracking-wider2 text-ink-400 shrink-0">
                   {s.capture.view}
                 </span>
+                {s.status === "rejected" && (
+                  <span className="font-mono text-[10px] uppercase tracking-wider2 text-signal-red border border-signal-red/40 px-1.5 py-0.5 shrink-0">
+                    rejected
+                  </span>
+                )}
                 <span className="font-mono text-[10px] text-ink-500 truncate hidden md:inline normal-case">
                   {s.sessionId}
                 </span>

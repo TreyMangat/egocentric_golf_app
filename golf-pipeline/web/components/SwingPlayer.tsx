@@ -27,6 +27,8 @@ interface Props {
   fps: number;
   keypoints: KeypointsRef | null | undefined;
   phases: Phases | null | undefined;
+  motionScore?: number;
+  status?: "accepted" | "rejected";
   /** Cross-player sync hooks (compare view). All optional. */
   onPlay?: () => void;
   onPause?: () => void;
@@ -126,6 +128,8 @@ export const SwingPlayer = forwardRef<SwingPlayerHandle, Props>(function SwingPl
   fps,
   keypoints,
   phases,
+  motionScore,
+  status = "accepted",
   onPlay,
   onPause,
   onSeek,
@@ -419,8 +423,21 @@ export const SwingPlayer = forwardRef<SwingPlayerHandle, Props>(function SwingPl
           />
         )}
 
-        <div className="absolute top-3 left-3 font-mono text-[10px] uppercase tracking-wider2 text-ink-300 bg-ink-950/80 px-2 py-1 border border-ink-700">
-          {view} / {club}
+        <div className="absolute top-3 left-3 flex flex-wrap items-center gap-1.5">
+          <div className="font-mono text-[10px] uppercase tracking-wider2 text-ink-300 bg-ink-950/80 px-2 py-1 border border-ink-700">
+            {view} / {club}
+          </div>
+          {motionScore !== undefined && (
+            <div
+              className={`font-mono text-[10px] uppercase tracking-wider2 bg-ink-950/80 px-2 py-1 border ${
+                status === "rejected"
+                  ? "border-signal-red/60 text-signal-red"
+                  : "border-accent/50 text-accent"
+              }`}
+            >
+              motion {motionScore.toFixed(1)} m/s
+            </div>
+          )}
         </div>
 
         {videoUrl && !hasOverlay && keypoints?.storageRef && (

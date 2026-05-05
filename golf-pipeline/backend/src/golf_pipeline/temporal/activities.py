@@ -29,6 +29,7 @@ from golf_pipeline.schemas import (
     Club,
     IngestRequest,
     KeypointsRef,
+    Metrics,
     Pipeline,
     Session,
     Swing,
@@ -44,6 +45,10 @@ from golf_pipeline.storage.s3 import (
     raw_video_key,
     upload_bytes,
 )
+
+MOTION_SCORE_THRESHOLD_MS = 5.0
+LEFT_WRIST = 15
+RIGHT_WRIST = 16
 
 # ─── 1. segment_session_audio ─────────────────────────────────────────────────
 
@@ -245,7 +250,14 @@ async def compute_metrics_and_write(
     impact_frame = int(round((window.impact_ms - window.start_ms) / 1000 * fps))
     impact_frame = max(0, min(impact_frame, kp.shape[0] - 1))
 
-    phases, metrics, ranges = compute_all(kp, fps=fps, impact_frame=impact_frame)
+    motion_score = compute_motion_score(kp, fps=fps, impact_frame=impact_frame)
+    accepted = motion_score >= MOTION_SCORE_THRESHOLD_MS
+
+    phases = None
+    metrics = Metrics()
+    ranges = {}
+    if accepted:
+        phases, metrics, ranges = compute_all(kp, fps=fps, impact_frame=impact_frame)
 
     cfg = get_config()
     swing = Swing(
@@ -253,6 +265,8 @@ async def compute_metrics_and_write(
         userId=user_id,
         sessionId=session_id,
         createdAt=datetime.utcnow(),
+        status="accepted" if accepted else "rejected",
+        motionScore=motion_score,
         capture=Capture(
             view=window.view or View.DTL,
             club=window.club or Club.SEVEN_I,
@@ -283,6 +297,36 @@ async def compute_metrics_and_write(
 
     await insert_swing(swing)
     await append_swing_to_session(session_id, swing.id)
+
+
+def compute_motion_score(kp: np.ndarray, fps: float, impact_frame: int) -> float:
+    """Peak wrist speed in m/s around impact, using metric-space wrist tracks."""
+    if kp.size == 0 or fps <= 0:
+        return 0.0
+
+    n_frames = kp.shape[0]
+    if n_frames < 2:
+        return 0.0
+
+    start = max(0, int(round(impact_frame - 1.5 * fps)))
+    end = min(n_frames - 1, int(round(impact_frame + 0.5 * fps)))
+    if end <= start:
+        return 0.0
+
+    peak = 0.0
+    for wrist in (LEFT_WRIST, RIGHT_WRIST):
+        positions = kp[start : end + 1, wrist, :3]
+        current = positions[1:]
+        previous = positions[:-1]
+        valid = np.isfinite(current).all(axis=1) & np.isfinite(previous).all(axis=1)
+        if not valid.any():
+            continue
+
+        speeds = np.linalg.norm(current[valid] - previous[valid], axis=1) * fps
+        if speeds.size:
+            peak = max(peak, float(np.max(speeds)))
+
+    return peak
 
 
 # ─── 5. summarize_session ─────────────────────────────────────────────────────
