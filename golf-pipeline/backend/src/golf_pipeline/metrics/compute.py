@@ -12,10 +12,16 @@ the MediaPipe spec:
 
 Conventions
 -----------
-- Keypoints are in BlazePose's "world" coords (meters, pelvis-centered, +y up).
-  We work in those units, then convert to mm/deg at the end.
-- `lead` = side closest to the target. For a right-handed golfer this is left.
-  Set `lead_side="L"` (default) or `"R"` per swing.
+- Internal formulas in this module assume world coords with **+Y up**:
+  meters, pelvis-centered, head at the largest y. BlazePose's
+  `pose_world_landmarks` actually ships +Y *down* (head at the smallest y).
+  The single load-boundary fix lives at the top of `compute_all` — every
+  helper below (detect_phases, shoulder_turn_deg, spine_tilt_deg, …) is
+  written against +Y up and trusts the caller to have come through
+  `compute_all`. `.npz` files on S3 stay canonical BlazePose output; we do
+  not rewrite them.
+- `lead` = side closest to the target. For a right-handed golfer this is
+  left. Set `lead_side="L"` (default) or `"R"` per swing.
 """
 
 from __future__ import annotations
@@ -92,8 +98,20 @@ def detect_phases(
             takeaway_frame = i
             break
 
-    # top: argmax of lead-wrist height between takeaway and last 30%
-    search_end = max(takeaway_frame + 1, int(n * 0.7))
+    # top: argmax of lead-wrist height between takeaway and impact.
+    # Real swings have two y-apexes — top of backswing AND follow-through
+    # (lead arm crossing up over the body). Without clamping the search
+    # to end at `impact_frame`, argmax sometimes picks the follow-through
+    # apex on driver/wedge clips, producing a "top" that's *after* impact
+    # and a negative downswing duration. Audio impact is the canonical
+    # phase anchor in V1 (see PROJECT_SPEC.md); using it as the search
+    # bound is the same primitive doing more work. The `0.7·n` cap is
+    # retained as a defensive fallback if impact_frame is ever absent
+    # (e.g. a future audio-optional path).
+    if impact_frame is not None:
+        search_end = max(takeaway_frame + 1, min(impact_frame, int(n * 0.7)))
+    else:
+        search_end = max(takeaway_frame + 1, int(n * 0.7))
     heights = kp[takeaway_frame:search_end, lead_wrist, 1]  # +y up
     top_offset = int(np.argmax(heights))
     top_frame = takeaway_frame + top_offset
@@ -109,9 +127,18 @@ def detect_phases(
     if impact_frame is None:
         impact_frame = int(transition_frame + np.argmax(speed[transition_frame:]))
 
-    # finish: first stable frame after impact with wrist height > shoulder
+    # finish: first stable frame after impact with wrist height > shoulder.
+    # Real-swing fallback: if the wrist-above-shoulder + speed-stable
+    # condition never fires inside the clip (segmenter cut short, follow-
+    # through truncated, pose noise on the trailing wrist) we cap finish
+    # at impact + ~1 s rather than letting it slide to the last frame of
+    # the clip. The previous `n - 1` fallback inflated `head_excursions_mm`
+    # by including all post-swing motion in the sway window — see
+    # docs/diagnose_swing_20260504_205932_2a478c_swing_000.md (376 mm sway
+    # vs. 68 mm at the audio-anchored impact frame).
     sh_y = (kp[:, LSH, 1] + kp[:, RSH, 1]) / 2
-    finish_frame = n - 1
+    follow_through_cap = min(impact_frame + int(1.0 * fps), n - 1)
+    finish_frame = follow_through_cap
     for i in range(impact_frame + 1, n - win):
         if (
             kp[i, lead_wrist, 1] > sh_y[i]
@@ -144,15 +171,19 @@ def tempo(phases: Phases) -> tuple[float, int, int]:
     return backswing_ms / downswing_ms, backswing_ms, downswing_ms
 
 
-def shoulder_turn_deg(kp: np.ndarray, frame: int) -> float:
-    """Angle of shoulder line at `frame` vs the same line at frame 0 (address)."""
-    sh0 = kp[0, RSH, [0, 2]] - kp[0, LSH, [0, 2]]  # XZ plane
+def shoulder_turn_deg(kp: np.ndarray, address_frame: int, frame: int) -> float:
+    """Angle of the shoulder line at `frame` relative to its position at the
+    *detected* address frame. Audio-cut clips don't always start exactly at
+    address, so we anchor on the address frame the phase detector found
+    rather than on `kp[0]`.
+    """
+    sh0 = kp[address_frame, RSH, [0, 2]] - kp[address_frame, LSH, [0, 2]]  # XZ plane
     sht = kp[frame, RSH, [0, 2]] - kp[frame, LSH, [0, 2]]
     return _angle_deg_2d(sh0, sht)
 
 
-def hip_turn_deg(kp: np.ndarray, frame: int) -> float:
-    h0 = kp[0, RHIP, [0, 2]] - kp[0, LHIP, [0, 2]]
+def hip_turn_deg(kp: np.ndarray, address_frame: int, frame: int) -> float:
+    h0 = kp[address_frame, RHIP, [0, 2]] - kp[address_frame, LHIP, [0, 2]]
     ht = kp[frame, RHIP, [0, 2]] - kp[frame, LHIP, [0, 2]]
     return _angle_deg_2d(h0, ht)
 
@@ -253,11 +284,19 @@ def compute_all(
     lead_side: LeadSide = "L",
     impact_frame: int | None = None,
 ) -> tuple[Phases, Metrics, dict[str, RangeStatus]]:
+    # Load-boundary y-axis flip: BlazePose `pose_world_landmarks` ships
+    # +Y down, but every helper below is written against +Y up (head at
+    # the largest y). One transformation here, no flips elsewhere — see
+    # the module docstring. Copy first so we never mutate the caller's
+    # array (the activity reuses `kp` to compute `motion_score`).
+    kp = kp.copy()
+    kp[..., 1] = -kp[..., 1]
+
     phases = detect_phases(kp, fps, lead_side=lead_side, impact_frame=impact_frame)
 
     ratio, backswing_ms, downswing_ms = tempo(phases)
-    sh_top = shoulder_turn_deg(kp, phases.top.frame)
-    hip_top = hip_turn_deg(kp, phases.top.frame)
+    sh_top = shoulder_turn_deg(kp, phases.address.frame, phases.top.frame)
+    hip_top = hip_turn_deg(kp, phases.address.frame, phases.top.frame)
     sway, lift = head_excursions_mm(kp, phases.address.frame, phases.finish.frame)
 
     metrics = Metrics(
