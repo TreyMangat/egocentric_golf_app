@@ -23,6 +23,7 @@ from golf_pipeline.metrics.compute import (
     RHIP,
     RSH,
     compute_all,
+    lead_arm_angle_deg,
 )
 
 LEL = 13
@@ -252,6 +253,36 @@ def test_top_clamped_before_impact_when_follow_through_apex_is_higher():
     # And the downstream tempo math must come out positive.
     assert metrics.downswing_duration_ms is not None
     assert metrics.downswing_duration_ms > 0
+
+
+def test_lead_arm_angle_convention_straight_is_180_folded_is_zero():
+    """`lead_arm_angle_deg` is documented "straight = 180°". Synthesize the
+    three canonical configurations (straight, right-angle, folded) and pin
+    the convention so a future refactor can't silently re-invert it.
+
+    Note: this calls `lead_arm_angle_deg` directly with +Y-up coordinates
+    (no flip). The function is geometric — the y-axis convention only
+    matters indirectly through which apex frame `compute_all` selects.
+    """
+    pose = np.zeros((1, 33, 4), dtype=np.float32)
+    pose[:, :, 3] = 1.0
+
+    # All three configurations share shoulder at the origin and the elbow
+    # one unit "down" along +Y-up's −Y. Wrist position varies.
+    pose[0, LSH, :3] = (0.0, 0.0, 0.0)
+    pose[0, 13, :3] = (0.0, -1.0, 0.0)  # L_elbow
+
+    # Straight: wrist colinear with shoulder–elbow, elbow in middle.
+    pose[0, LWR, :3] = (0.0, -2.0, 0.0)
+    assert lead_arm_angle_deg(pose, 0, "L") == pytest.approx(180.0, abs=0.5)
+
+    # Right angle: wrist offset 90° from the upper-arm axis.
+    pose[0, LWR, :3] = (1.0, -1.0, 0.0)
+    assert lead_arm_angle_deg(pose, 0, "L") == pytest.approx(90.0, abs=0.5)
+
+    # Fully folded: wrist at the shoulder (vectors parallel).
+    pose[0, LWR, :3] = (0.0, 0.0, 0.0)
+    assert lead_arm_angle_deg(pose, 0, "L") == pytest.approx(0.0, abs=0.5)
 
 
 def test_finish_caps_at_impact_plus_one_second_when_condition_unmet():

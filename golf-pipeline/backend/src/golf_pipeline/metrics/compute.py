@@ -218,12 +218,25 @@ def spine_tilt_deg(kp: np.ndarray, frame: int) -> float:
 
 
 def lead_arm_angle_deg(kp: np.ndarray, frame: int, lead_side: LeadSide) -> float:
+    """Angle at the elbow between the upper arm and the forearm.
+
+    Both vectors emanate FROM the elbow:
+      `upper` = shoulder − elbow  (toward the shoulder)
+      `fore`  = wrist    − elbow  (toward the wrist)
+
+    For a straight arm the shoulder, elbow, and wrist are colinear with the
+    elbow in the middle, so the two vectors point in *opposite* directions
+    and the angle between them is 180°. A folded-up arm pushes the angle
+    toward 0°. The original formula did `180° − angle_between(...)` with a
+    "straight = 180°" comment — the comment captured the intent, the math
+    inverted it (real swings reported ~0°-20°, target band 160°-180°).
+    """
     sh = LSH if lead_side == "L" else RSH
     el = LEL if lead_side == "L" else REL
     wr = LWR if lead_side == "L" else RWR
     upper = kp[frame, sh, :3] - kp[frame, el, :3]
     fore = kp[frame, wr, :3] - kp[frame, el, :3]
-    return 180.0 - _angle_deg_2d(upper, fore)  # straight = 180°
+    return _angle_deg_2d(upper, fore)  # straight = 180°, folded = 0°
 
 
 def wrist_hinge_max_deg(
