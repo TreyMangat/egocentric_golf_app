@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { listSessions, type Session } from "@/lib/api";
+import { API_BASE, listSessions, type Session } from "@/lib/api";
 
 export const dynamic = "force-dynamic";
 
@@ -80,7 +80,7 @@ export default async function HomePage() {
         <div className="border border-signal-red/40 bg-signal-red/5 px-4 py-3 font-mono text-sm">
           API unreachable: {error}
           <div className="text-ink-400 mt-1 text-xs">
-            Make sure `uvicorn golf_pipeline.api.server:app` is running on port 8000.
+            Make sure `uvicorn golf_pipeline.api.server:app` is reachable at {API_BASE}.
           </div>
         </div>
       )}
