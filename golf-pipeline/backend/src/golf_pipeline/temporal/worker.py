@@ -15,6 +15,7 @@ from temporalio.worker import Worker
 
 from golf_pipeline.config import get_config
 from golf_pipeline.db.client import ensure_indexes
+from golf_pipeline.temporal import activities
 from golf_pipeline.temporal.activities import ALL_ACTIVITIES
 from golf_pipeline.temporal.workflows import ProcessSession, ProcessSwing
 
@@ -36,7 +37,11 @@ async def main():
         workflows=[ProcessSession, ProcessSwing],
         activities=ALL_ACTIVITIES,
     )
-    print(f"[worker] connected to {cfg.temporal.target}, queue={cfg.temporal.task_queue}")
+    print(
+        f"[worker] connected to {cfg.temporal.target}, queue={cfg.temporal.task_queue}, "
+        f"pipeline={cfg.pipeline_version}, activities={activities.__file__}, "
+        f"motion_threshold={activities.MOTION_SCORE_THRESHOLD_MS}"
+    )
     await worker.run()
 
 

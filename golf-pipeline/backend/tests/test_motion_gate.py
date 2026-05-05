@@ -235,3 +235,72 @@ def test_legacy_swing_docs_default_to_accepted():
 
     assert swing.status == "accepted"
     assert swing.motion_score == 0.0
+
+
+class _FakeCollection:
+    def __init__(self) -> None:
+        self.inserted: list[dict] = []
+        self.updates: list[tuple[dict, dict]] = []
+
+    async def insert_one(self, doc: dict):
+        self.inserted.append(doc)
+
+    async def update_one(self, query: dict, update: dict):
+        self.updates.append((query, update))
+
+
+class _FakeDb:
+    def __init__(self) -> None:
+        self.swings = _FakeCollection()
+        self.sessions = _FakeCollection()
+
+
+@pytest.mark.asyncio
+async def test_compute_metrics_activity_persists_motion_gate_fields(
+    activity_env,
+    monkeypatch,
+    tmp_path,
+):
+    """Exercise the real activity plus repository serialization into a Mongo-shaped doc."""
+    import golf_pipeline.db.client as db_client
+
+    src_npz = tmp_path / "kp.npz"
+    kp = _pose_with_wrist_track(np.full(180, 0.85, dtype=np.float32))
+    _write_npz(src_npz, kp, 60.0)
+    fake_db = _FakeDb()
+
+    monkeypatch.setattr(
+        activities,
+        "download_to_path",
+        lambda key, dst: shutil.copyfile(src_npz, dst),
+    )
+    monkeypatch.setattr(db_client, "db", lambda: fake_db)
+
+    def fail_compute_all(kp_arg: np.ndarray, fps: float, impact_frame: int):
+        raise AssertionError("compute_all should not run for rejected swings")
+
+    monkeypatch.setattr(activities, "compute_all", fail_compute_all)
+
+    await activity_env.run(
+        compute_metrics_and_write,
+        "session_001",
+        "user_001",
+        _window(),
+        "s3://test-bucket/kp/user_001/session_001/swing_001.npz",
+        60.0,
+    )
+
+    assert len(fake_db.swings.inserted) == 1
+    doc = fake_db.swings.inserted[0]
+    assert doc["status"] == "rejected"
+    assert "motionScore" in doc
+    assert isinstance(doc["motionScore"], float)
+    assert doc["motionScore"] < MOTION_SCORE_THRESHOLD_MS
+    assert doc["phases"] is None
+    assert doc["metrics"]["tempoRatioBackswingDownswing"] is None
+    assert len(fake_db.sessions.updates) == 1
+    query, update = fake_db.sessions.updates[0]
+    assert query == {"_id": "session_001"}
+    assert update["$addToSet"] == {"swingIds": "swing_001"}
+    assert update["$inc"] == {"swingCount": 1}
+    assert "updatedAt" in update["$set"]

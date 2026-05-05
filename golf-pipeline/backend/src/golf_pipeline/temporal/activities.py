@@ -252,6 +252,13 @@ async def compute_metrics_and_write(
 
     motion_score = compute_motion_score(kp, fps=fps, impact_frame=impact_frame)
     accepted = motion_score >= MOTION_SCORE_THRESHOLD_MS
+    activity.logger.info(
+        "Motion gate swing %s: score=%.3f threshold=%.3f status=%s",
+        window.swing_id,
+        motion_score,
+        MOTION_SCORE_THRESHOLD_MS,
+        "accepted" if accepted else "rejected",
+    )
 
     phases = None
     metrics = Metrics()
