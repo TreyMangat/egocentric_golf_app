@@ -78,6 +78,7 @@ export default async function SwingPage({ params }: { params: Promise<{ id: stri
       <section className="grid grid-cols-1 lg:grid-cols-[1.6fr_1fr] gap-8">
         <div className="space-y-4">
           <SwingPlayer
+            swingId={swing._id}
             videoUrl={swing.videoUrl}
             resolution={swing.capture.resolution}
             view={swing.capture.view}

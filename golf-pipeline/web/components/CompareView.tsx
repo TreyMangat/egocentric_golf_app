@@ -84,6 +84,7 @@ const Pane = function PaneInner({
       </div>
       <SwingPlayer
         ref={ref}
+        swingId={swing._id}
         videoUrl={swing.videoUrl}
         resolution={swing.capture.resolution}
         view={swing.capture.view}

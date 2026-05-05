@@ -114,6 +114,19 @@ export const getSession = (id: string) =>
 export const listSwings = () => api<Swing[]>("/api/v1/swings");
 export const getSwing = (id: string) => api<Swing>(`/api/v1/swings/${id}`);
 
+// `[null, null, null]` for joints with NaN landmarks (NaNSafeJSONResponse).
+// The frontend already filters with `Number.isFinite`, so this shape is
+// safe to hand straight to the SVG overlay.
+export interface KeypointsResponse {
+  swingId: string;
+  schema: string;
+  fps: number;
+  image: Array<Array<[number, number, number] | [null, null, null]>>;
+}
+
+export const getSwingKeypoints = (id: string) =>
+  api<KeypointsResponse>(`/api/v1/swings/${id}/keypoints`);
+
 // ─── capture flow ─────────────────────────────────────────────────────────────
 
 export async function startSession(args: {

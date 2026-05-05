@@ -4,10 +4,11 @@ import {
   forwardRef,
   useEffect,
   useImperativeHandle,
+  useMemo,
   useRef,
   useState,
 } from "react";
-import type { Phases } from "@/lib/api";
+import { getSwingKeypoints, type Phases } from "@/lib/api";
 import {
   POSE_CONNECTIONS,
   VIS_HIGH,
@@ -19,6 +20,10 @@ import {
 } from "@/lib/pose";
 
 interface Props {
+  /** Mongo `_id` of the swing — used to fetch offloaded keypoints when
+   *  they aren't inline. Optional so the compare view can still embed
+   *  this player on synthetic data without a swing record. */
+  swingId?: string;
   videoUrl: string | undefined;
   resolution: [number, number];
   view: string;
@@ -121,6 +126,7 @@ function drawFrame(
 }
 
 export const SwingPlayer = forwardRef<SwingPlayerHandle, Props>(function SwingPlayer({
+  swingId,
   videoUrl,
   resolution,
   view,
@@ -143,13 +149,53 @@ export const SwingPlayer = forwardRef<SwingPlayerHandle, Props>(function SwingPl
   // Seeded once `loadedmetadata` fires; used to position phase markers.
   const [duration, setDuration] = useState<number>(0);
 
-  const imageSeries: ImageKeypointSeries | null =
+  const inlineImageSeries: ImageKeypointSeries | null =
     keypoints?.inline?.image ?? null;
+  // For real swings, keypoints live on S3 and we fetch them via the
+  // `/swings/:id/keypoints` endpoint. Tests, the compare view's synthetic
+  // data path, and any caller that already has inline keypoints get the
+  // inline copy without an extra round trip.
+  const [fetchedSeries, setFetchedSeries] = useState<ImageKeypointSeries | null>(null);
+  const [fetchedFps, setFetchedFps] = useState<number | null>(null);
+  const [overlayError, setOverlayError] = useState<string | null>(null);
+
+  const needsFetch =
+    !inlineImageSeries &&
+    !!swingId &&
+    !!keypoints?.storageRef;
+
+  useEffect(() => {
+    if (!needsFetch || !swingId) return;
+    let cancelled = false;
+    setOverlayError(null);
+    getSwingKeypoints(swingId)
+      .then((res) => {
+        if (cancelled) return;
+        // Image triplets come back as `[number, number, number]` or
+        // `[null, null, null]` for unknown joints; the existing
+        // `isUsableJoint` filter handles both shapes.
+        setFetchedSeries(res.image as unknown as ImageKeypointSeries);
+        setFetchedFps(res.fps);
+      })
+      .catch((e: Error) => {
+        if (cancelled) return;
+        setOverlayError(e.message);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [needsFetch, swingId]);
+
+  const imageSeries: ImageKeypointSeries | null = inlineImageSeries ?? fetchedSeries;
   // The keypoint timeseries can be sampled at a different rate than the
   // video (e.g. video=60fps, keypoints decimated to 30fps). The keyboard
   // ±1 frame stepping uses the video fps; overlay frame lookup uses the
   // keypoint fps. They're equal in production today, distinct in spec.
-  const kpFps = keypoints?.fps ?? fps;
+  const kpFps = useMemo(() => {
+    if (inlineImageSeries) return keypoints?.fps ?? fps;
+    if (fetchedFps !== null) return fetchedFps;
+    return keypoints?.fps ?? fps;
+  }, [inlineImageSeries, fetchedFps, keypoints?.fps, fps]);
   const [resW, resH] = resolution;
   const hasOverlay = imageSeries !== null && imageSeries.length > 0;
   const phaseList = orderedPhases(phases);
@@ -440,9 +486,14 @@ export const SwingPlayer = forwardRef<SwingPlayerHandle, Props>(function SwingPl
           )}
         </div>
 
-        {videoUrl && !hasOverlay && keypoints?.storageRef && (
+        {videoUrl && !hasOverlay && keypoints?.storageRef && needsFetch && !overlayError && (
           <div className="absolute bottom-3 right-3 font-mono text-[10px] uppercase tracking-wider2 text-ink-400 bg-ink-950/80 px-2 py-1 border border-ink-700">
-            keypoints offloaded · overlay deferred to v1.5
+            loading overlay…
+          </div>
+        )}
+        {videoUrl && overlayError && (
+          <div className="absolute bottom-3 right-3 font-mono text-[10px] uppercase tracking-wider2 text-signal-red bg-ink-950/80 px-2 py-1 border border-signal-red/50">
+            overlay unavailable · {overlayError}
           </div>
         )}
       </div>

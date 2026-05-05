@@ -10,17 +10,22 @@ GET   /api/v1/sessions          → list recent sessions
 GET   /api/v1/sessions/:id      → session detail
 GET   /api/v1/swings            → list recent swings
 GET   /api/v1/swings/:id        → swing detail
+GET   /api/v1/swings/:id/keypoints  → image-normalized landmark series
 GET   /api/v1/swings/:id/similar  → vector-search similar swings (V1.5)
 """
 
 from __future__ import annotations
 
+import asyncio
 import json
 import math
 import os
+import tempfile
 from datetime import datetime
+from pathlib import Path
 from typing import Any
 
+import numpy as np
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -40,7 +45,13 @@ from golf_pipeline.db.client import (
     upsert_session,
 )
 from golf_pipeline.schemas import IngestRequest, Session
-from golf_pipeline.storage.s3 import presign_get, presign_put, raw_video_key
+from golf_pipeline.storage.s3 import (
+    download_to_path,
+    parse_s3_uri,
+    presign_get,
+    presign_put,
+    raw_video_key,
+)
 from golf_pipeline.temporal.workflows import ProcessSession
 
 
@@ -213,6 +224,60 @@ async def swing_detail(swing_id: str):
     if s.capture.video_key:
         out["videoUrl"] = presign_get(s.capture.video_key)
     return out
+
+
+def _load_keypoints_image(storage_ref: str) -> tuple[list[list[list[float]]], float]:
+    """Download a swing's keypoints `.npz` from S3 and return its
+    image-normalized landmarks plus fps. Pure helper — no Mongo, no app
+    state, so it stands alone in tests.
+
+    `keypoints_image` is shaped (frames, 33, 3) where each row is
+    (x_norm, y_norm, visibility). NaNs survive into the JSON payload as
+    `null` via `NaNSafeJSONResponse`; the frontend already filters those
+    out via `isUsableJoint`.
+    """
+    _, key = parse_s3_uri(storage_ref)
+    with tempfile.TemporaryDirectory() as td:
+        local = Path(td) / "kp.npz"
+        download_to_path(key, str(local))
+        # On Windows np.load keeps a file handle until close; the `with`
+        # form releases before tempdir cleanup.
+        with np.load(local) as npz:
+            image = np.array(npz["keypoints_image"], dtype=np.float64)
+            fps = float(npz["fps"])
+    return image.tolist(), fps
+
+
+@app.get("/api/v1/swings/{swing_id}/keypoints")
+async def swing_keypoints(swing_id: str):
+    """Return the image-normalized BlazePose landmark series for a swing.
+
+    Used by the swing-detail page to drive the SVG skeleton overlay over
+    the rendered video. The keypoints `.npz` lives on S3; we download once
+    per request and emit JSON. Cache headers are conservative — the file
+    is immutable per swing, but in V1 we'd rather refetch than risk
+    serving stale frames behind a long-lived CDN entry.
+    """
+    s = await get_swing(swing_id)
+    if s is None:
+        raise HTTPException(404)
+    if s.keypoints is None or not s.keypoints.storage_ref:
+        # No offloaded keypoints to fetch (rejected swings, legacy docs).
+        # 404 keeps the client-side branch simple: present → render, absent
+        # → fall back to the existing "no overlay" UI.
+        raise HTTPException(404, "swing has no offloaded keypoints")
+
+    image, fps = await asyncio.to_thread(_load_keypoints_image, s.keypoints.storage_ref)
+
+    return NaNSafeJSONResponse(
+        content={
+            "swingId": swing_id,
+            "schema": s.keypoints.schema_name,
+            "fps": int(round(fps)),
+            "image": image,
+        },
+        headers={"Cache-Control": "private, max-age=300"},
+    )
 
 
 @app.get("/api/v1/swings/{swing_id}/similar")
