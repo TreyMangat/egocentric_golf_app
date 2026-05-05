@@ -23,6 +23,8 @@ Algorithm
 from __future__ import annotations
 
 import math
+import os
+import shutil
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
@@ -56,12 +58,35 @@ class Impact:
     confidence: float
 
 
+def resolve_media_binary(name: str) -> str:
+    """Resolve ffmpeg/ffprobe even when a long-lived Windows worker has stale PATH."""
+    found = shutil.which(name)
+    if found:
+        return found
+
+    exe_name = name
+    if os.name == "nt" and not exe_name.lower().endswith(".exe"):
+        exe_name = f"{exe_name}.exe"
+
+    candidates: list[Path] = []
+    local_app_data = os.environ.get("LOCALAPPDATA")
+    if local_app_data:
+        candidates.append(Path(local_app_data) / "ffmpeg" / "bin" / exe_name)
+
+    for candidate in candidates:
+        if candidate.is_file():
+            return str(candidate)
+
+    searched = ", ".join(str(c) for c in candidates) or "no fallback paths"
+    raise FileNotFoundError(f"{name} not found on PATH or in {searched}")
+
+
 def extract_audio(video_path: str | Path, out_wav: str | Path) -> Path:
     """Use ffmpeg to pull a mono 22.05 kHz wav from the video."""
     out = Path(out_wav)
     subprocess.run(
         [
-            "ffmpeg", "-y", "-i", str(video_path),
+            resolve_media_binary("ffmpeg"), "-y", "-i", str(video_path),
             "-ac", "1", "-ar", str(SAMPLE_RATE),
             "-vn", "-f", "wav", str(out),
         ],

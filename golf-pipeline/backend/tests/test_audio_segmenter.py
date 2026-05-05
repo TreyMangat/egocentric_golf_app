@@ -16,6 +16,7 @@ Real calibration happens against a real range recording.
 
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 
@@ -25,7 +26,10 @@ sys.path.insert(0, str(_SCRIPTS))
 
 import synth_impacts  # noqa: E402
 
-from golf_pipeline.segmentation.audio_impact import detect_impacts  # noqa: E402
+from golf_pipeline.segmentation.audio_impact import (  # noqa: E402
+    detect_impacts,
+    resolve_media_binary,
+)
 
 TIMING_TOLERANCE_MS = 50
 DISTRACTOR_GUARD_MS = 200
@@ -121,3 +125,18 @@ def test_segmenter_detects_impact_just_past_warmup(tmp_path):
         f"impact at 200 ms not detected within ±{TIMING_TOLERANCE_MS} ms;"
         f" detected={detected_ms}"
     )
+
+
+def test_resolve_media_binary_uses_localappdata_fallback(tmp_path, monkeypatch):
+    """Windows workers may keep running with a PATH from before ffmpeg install."""
+    import golf_pipeline.segmentation.audio_impact as audio_impact
+
+    monkeypatch.setattr(audio_impact.shutil, "which", lambda name: None)
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+
+    exe_name = "ffmpeg.exe" if os.name == "nt" else "ffmpeg"
+    ffmpeg = tmp_path / "ffmpeg" / "bin" / exe_name
+    ffmpeg.parent.mkdir(parents=True)
+    ffmpeg.write_bytes(b"fake")
+
+    assert resolve_media_binary("ffmpeg") == str(ffmpeg)

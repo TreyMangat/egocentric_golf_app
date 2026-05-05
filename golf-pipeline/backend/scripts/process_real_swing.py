@@ -65,7 +65,6 @@ from test_local_pipeline import (  # noqa: E402
     _http_post_json,
     _http_put_file,
     _preflight,
-    _presign,
     _register_session,
     _wait_for_workflow,
 )
@@ -173,6 +172,21 @@ def _content_type_for(path: Path) -> str:
     return "application/octet-stream"
 
 
+def _presign_real_upload(
+    api: str, user_id: str, session_id: str, content_type: str
+) -> tuple[str, str]:
+    body = _http_post_json(
+        f"{api}/api/v1/upload/presign",
+        {
+            "user_id": user_id,
+            "session_id": session_id,
+            "clip_id": "session",
+            "content_type": content_type,
+        },
+    )
+    return body["upload_url"], body["s3_key"]
+
+
 def _finalize_with_tag(
     api: str, user_id: str, session_id: str, club: str, view: str
 ) -> str:
@@ -229,10 +243,12 @@ async def _main_async(args: argparse.Namespace) -> None:
     console.log(f"session_id={session_id} user_id={user_id}")
 
     _register_session(args.api, user_id, session_id, started_at)
-    upload_url, s3_key = _presign(args.api, user_id, session_id)
+    content_type = _content_type_for(video_path)
+    upload_url, s3_key = _presign_real_upload(
+        args.api, user_id, session_id, content_type
+    )
     console.log(f"s3_key={s3_key}")
 
-    content_type = _content_type_for(video_path)
     console.log(f"uploading {video_path.name} as {content_type}")
     try:
         _http_put_file(upload_url, video_path, content_type)

@@ -36,7 +36,7 @@ from golf_pipeline.schemas import (
     Tags,
     View,
 )
-from golf_pipeline.segmentation.audio_impact import segment_video
+from golf_pipeline.segmentation.audio_impact import resolve_media_binary, segment_video
 from golf_pipeline.storage.s3 import (
     download_to_path,
     keypoints_key,
@@ -136,7 +136,7 @@ async def cut_clip(session_id: str, user_id: str, window: SwingWindow) -> str:
 def _ffmpeg_cut(src: str, dst: str, start_s: float, duration_s: float):
     subprocess.run(
         [
-            "ffmpeg", "-y",
+            resolve_media_binary("ffmpeg"), "-y",
             "-ss", f"{start_s:.3f}",
             "-i", src,
             "-t", f"{duration_s:.3f}",
