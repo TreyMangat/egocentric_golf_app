@@ -69,6 +69,9 @@ from test_local_pipeline import (  # noqa: E402
     _wait_for_workflow,
 )
 
+sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+
 console = Console()
 
 VALID_CLUBS = (
