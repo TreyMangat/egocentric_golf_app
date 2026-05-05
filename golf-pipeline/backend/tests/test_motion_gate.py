@@ -211,6 +211,7 @@ async def test_compute_metrics_activity_accepts_high_motion(
 
     assert swing.status == "accepted"
     assert swing.motion_score >= MOTION_SCORE_THRESHOLD_MS
+    assert swing.motion_score > 20.0
     assert swing.phases is not None
     assert swing.metrics.tempo_ratio_backswing_downswing == 3.0
     assert "tempoRatioBackswingDownswing" in swing.ranges

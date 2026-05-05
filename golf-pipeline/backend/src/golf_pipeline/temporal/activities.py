@@ -46,7 +46,7 @@ from golf_pipeline.storage.s3 import (
     upload_bytes,
 )
 
-MOTION_SCORE_THRESHOLD_MS = 5.0
+MOTION_SCORE_THRESHOLD_MS = 12.0
 LEFT_WRIST = 15
 RIGHT_WRIST = 16
 
