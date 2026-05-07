@@ -199,6 +199,13 @@ export const SwingPlayer = forwardRef<SwingPlayerHandle, Props>(function SwingPl
   const [resW, resH] = resolution;
   const hasOverlay = imageSeries !== null && imageSeries.length > 0;
   const phaseList = orderedPhases(phases);
+  const [naturalResolution, setNaturalResolution] = useState<[number, number] | null>(null);
+  const effectiveResolution = useMemo<[number, number]>(() => {
+    if (resW > 0 && resH > 0) return [resW, resH];
+    if (naturalResolution) return naturalResolution;
+    return [1, 1];
+  }, [resW, resH, naturalResolution]);
+  const [overlayW, overlayH] = effectiveResolution;
 
   const seekToMs = (tMs: number) => {
     const v = videoRef.current;
@@ -336,6 +343,9 @@ export const SwingPlayer = forwardRef<SwingPlayerHandle, Props>(function SwingPl
 
     const onLoadedMeta = () => {
       if (Number.isFinite(video.duration)) setDuration(video.duration);
+      if (video.videoWidth > 0 && video.videoHeight > 0) {
+        setNaturalResolution([video.videoWidth, video.videoHeight]);
+      }
       updatePlayhead();
     };
     const loop = () => {
@@ -399,7 +409,7 @@ export const SwingPlayer = forwardRef<SwingPlayerHandle, Props>(function SwingPl
         totalFrames - 1,
         Math.max(0, Math.floor(t * kpFps)),
       );
-      drawFrame(svg, imageSeries[idx], resW, resH);
+      drawFrame(svg, imageSeries[idx], overlayW, overlayH);
     };
 
     const loop = () => {
@@ -441,7 +451,7 @@ export const SwingPlayer = forwardRef<SwingPlayerHandle, Props>(function SwingPl
       video.removeEventListener("loadedmetadata", drawOnce);
       video.removeEventListener("ended", onStop);
     };
-  }, [hasOverlay, imageSeries, kpFps, resW, resH]);
+  }, [hasOverlay, imageSeries, kpFps, overlayW, overlayH]);
 
   return (
     <>
@@ -462,7 +472,7 @@ export const SwingPlayer = forwardRef<SwingPlayerHandle, Props>(function SwingPl
         {videoUrl && hasOverlay && (
           <svg
             ref={svgRef}
-            viewBox={`0 0 ${resW} ${resH}`}
+            viewBox={`0 0 ${overlayW} ${overlayH}`}
             preserveAspectRatio="xMidYMid meet"
             className="absolute inset-0 w-full h-full pointer-events-none"
             aria-hidden="true"
