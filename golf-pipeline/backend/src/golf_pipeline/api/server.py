@@ -80,6 +80,7 @@ class NaNSafeJSONResponse(JSONResponse):
 
 
 cfg = get_config()
+S3_VIDEO_URL_EXPIRES_SECONDS = 7 * 24 * 60 * 60
 app = FastAPI(
     title="golf-pipeline API",
     version=cfg.pipeline_version,
@@ -222,7 +223,10 @@ async def swing_detail(swing_id: str):
         raise HTTPException(404)
     out = s.model_dump(by_alias=True)
     if s.capture.video_key:
-        out["videoUrl"] = presign_get(s.capture.video_key)
+        out["videoUrl"] = presign_get(
+            s.capture.video_key,
+            expires_seconds=S3_VIDEO_URL_EXPIRES_SECONDS,
+        )
     return out
 
 

@@ -135,3 +135,23 @@ def test_keypoints_endpoint_returns_404_when_no_offloaded_keypoints(client, monk
     res = client.get("/api/v1/swings/no_kp/keypoints")
     assert res.status_code == 404
     assert "no offloaded keypoints" in res.json()["detail"]
+
+
+def test_swing_detail_presigns_video_for_seven_days(client, monkeypatch):
+    async def fake_get_swing(swing_id: str):
+        return _swing_with_storage_ref("s3://bucket/kp/u/s/swing_test.npz")
+
+    calls: list[tuple[str, int | None]] = []
+
+    def fake_presign_get(key: str, expires_seconds: int | None = None) -> str:
+        calls.append((key, expires_seconds))
+        return f"https://example.test/{key}"
+
+    monkeypatch.setattr(server, "get_swing", fake_get_swing)
+    monkeypatch.setattr(server, "presign_get", fake_presign_get)
+
+    res = client.get("/api/v1/swings/swing_test")
+
+    assert res.status_code == 200
+    assert res.json()["videoUrl"] == "https://example.test/raw/u/s/swing_test.mov"
+    assert calls == [("raw/u/s/swing_test.mov", 7 * 24 * 60 * 60)]
