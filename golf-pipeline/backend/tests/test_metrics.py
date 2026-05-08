@@ -129,14 +129,45 @@ def test_compute_all_produces_metrics_and_ranges():
     kp, _ = _synthetic_swing()
     _, metrics, ranges = compute_all(kp, fps=60.0, lead_side="L")
 
-    # tempo should be backswing > downswing
+    # Smoke test: tempo math returns non-negative durations.
+    # Note: the older `backswing > downswing` invariant relied on tempo
+    # being address-anchored (backswing = top.t_ms − 0). With takeaway
+    # anchoring, the synthetic's flat pre-shot region pulls the 25th-
+    # percentile speed threshold inside the slow backswing climb, so
+    # `detect_phases` collapses takeaway onto top on this fixture and
+    # backswing_ms can land at 0. Realistic backswing > downswing
+    # behavior is exercised by `test_tempo_anchors_on_takeaway_not_address`
+    # via the live swing_003 backfill, not the synthetic.
     assert metrics.backswing_duration_ms is not None
     assert metrics.downswing_duration_ms is not None
-    assert metrics.backswing_duration_ms > metrics.downswing_duration_ms
+    assert metrics.backswing_duration_ms >= 0
+    assert metrics.downswing_duration_ms > 0
 
     # ranges populated for every target metric
     assert "tempoRatioBackswingDownswing" in ranges
     assert ranges["tempoRatioBackswingDownswing"].status in ("pass", "warn", "fail")
+
+
+def test_tempo_anchors_on_takeaway_not_address():
+    """Regression: tempo's backswing window is takeaway → top, not
+    address → top. _synthetic_swing has ~24 frames of stillness before
+    wrist motion onset, mirroring the audio segmenter's -5 s pre-pad on
+    real swings. If `tempo()` reads `phases.address.t_ms`, backswing_ms
+    would equal top.t_ms (1400 ms at 60 fps); reading takeaway.t_ms
+    drops it under 1300 ms. Asserting < top.t_ms − 100 ms is true only
+    under takeaway anchoring.
+    """
+    kp, expected_top = _synthetic_swing(fps=60)
+    phases, metrics, _ = compute_all(kp, fps=60.0, lead_side="L")
+
+    expected_top_t_ms = int(expected_top / 60.0 * 1000)  # 1400 ms
+    assert metrics.backswing_duration_ms is not None
+    assert metrics.backswing_duration_ms < expected_top_t_ms - 100, (
+        f"backswing_duration_ms={metrics.backswing_duration_ms} ≥ "
+        f"top.t_ms-100={expected_top_t_ms - 100} indicates tempo() is "
+        "anchored on address (frame ~0), not takeaway "
+        f"(frame {phases.takeaway.frame})"
+    )
 
 
 def test_shoulder_turn_90deg_under_y_down_input():

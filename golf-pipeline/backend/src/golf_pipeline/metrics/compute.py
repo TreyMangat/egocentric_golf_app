@@ -181,7 +181,12 @@ def detect_phases(
 
 
 def tempo(phases: Phases) -> tuple[float, int, int]:
-    backswing_ms = phases.top.t_ms - phases.address.t_ms
+    # Backswing duration is takeaway → top (motion-defined window), not
+    # address → top. Address sits in the audio segmenter's -5 s pre-pad
+    # on real swings (pre-shot routine, not the swing itself); anchoring
+    # on it inflated swing_003's backswing to 4419 ms (ratio 13.94) when
+    # the actual takeaway-to-top span was 534 ms (ratio 1.68).
+    backswing_ms = phases.top.t_ms - phases.takeaway.t_ms
     downswing_ms = phases.impact.t_ms - phases.top.t_ms
     if downswing_ms <= 0:
         return float("nan"), backswing_ms, downswing_ms
