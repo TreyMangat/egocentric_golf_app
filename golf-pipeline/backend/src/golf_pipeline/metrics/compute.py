@@ -262,16 +262,20 @@ def lead_arm_angle_deg(kp: np.ndarray, frame: int, lead_side: LeadSide) -> float
 
 
 def wrist_hinge_max_deg(
-    kp: np.ndarray, address_frame: int, top_frame: int, lead_side: LeadSide
+    kp: np.ndarray, takeaway_frame: int, top_frame: int, lead_side: LeadSide
 ) -> float:
     """Approximation: angle between forearm and a 'club proxy' vector,
     where the club proxy is the lead-hand wrist→nose vector projected.
     This is a rough V1 stand-in until we track the club explicitly.
+
+    The window is takeaway → top: hinge develops once the club starts
+    swinging, not during the static address. Including pre-shot frames
+    pulled the max into noise outside the actual backswing.
     """
     el = LEL if lead_side == "L" else REL
     wr = LWR if lead_side == "L" else RWR
     angles = []
-    for f in range(address_frame, top_frame + 1):
+    for f in range(takeaway_frame, top_frame + 1):
         forearm = kp[f, wr, :3] - kp[f, el, :3]
         # naive club proxy: lead wrist → nose direction, projected
         club = kp[f, NOSE, :3] - kp[f, wr, :3]
@@ -342,7 +346,7 @@ def compute_all(
         hipTurnAtTopDeg=round(hip_top, 1),
         xFactorDeg=round(sh_top - hip_top, 1),
         wristHingeMaxDeg=round(
-            wrist_hinge_max_deg(kp, phases.address.frame, phases.top.frame, lead_side), 1
+            wrist_hinge_max_deg(kp, phases.takeaway.frame, phases.top.frame, lead_side), 1
         ),
         headSwayMaxMm=round(sway, 1),
         headLiftMaxMm=round(lift, 1),
