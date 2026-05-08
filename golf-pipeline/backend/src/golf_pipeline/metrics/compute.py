@@ -30,6 +30,7 @@ from dataclasses import dataclass
 from typing import Literal
 
 import numpy as np
+from scipy.ndimage import uniform_filter1d
 
 from golf_pipeline.schemas import Metrics, PhaseFrame, Phases, RangeStatus
 
@@ -91,10 +92,26 @@ def detect_phases(
             address_frame = i
             break
 
-    # takeaway: first frame after address with speed > 2× threshold
+    # takeaway: first frame after address where 3-frame-smoothed speed
+    # stays above 2× threshold for K consecutive frames (≥200 ms).
+    # The single-frame `speed > 2×thresh` rule the V1 detector used
+    # latched on isolated BlazePose noise spikes during address (e.g.
+    # swing_003 frame 24, a 17 ms blip 0.0016 m/s above trigger inside
+    # an otherwise quiet 0.04 m/s baseline). 50 ms persistence dodges
+    # noise spikes but still trips on sub-second waggle bursts; 200 ms
+    # is the smallest window that gates against waggle on the validated
+    # clip while keeping a plausible backswing duration before impact.
+    # See docs/diagnostics/takeaway_driver_d860189231a8_step1.html.
+    # NOTE: uniform_filter1d propagates NaN (smoothed = NaN if any
+    # input frame in the window is NaN). Currently safe because the
+    # search ends well before the post-clip NaN tail; revisit if the
+    # persistence window is ever extended past `impact_frame`.
+    takeaway_trigger = speed_thresh * 2
+    speed_smooth = uniform_filter1d(speed, size=3, mode="nearest")
+    persistence = max(3, int(0.2 * fps))
     takeaway_frame = address_frame
-    for i in range(address_frame + 1, n):
-        if speed[i] > speed_thresh * 2:
+    for i in range(address_frame + 1, n - persistence + 1):
+        if np.all(speed_smooth[i : i + persistence] > takeaway_trigger):
             takeaway_frame = i
             break
 
